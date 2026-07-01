@@ -1,26 +1,153 @@
 @import "tailwindcss";
 
+/*
+  Groupy design tokens — "friendly productivity" light theme.
+  Neutral warm canvas, one violet accent, semantic colours for module
+  types / statuses. Exposed through @theme so Tailwind generates
+  bg-*, text-*, border-* utilities (e.g. bg-surface, text-muted).
+*/
+@theme {
+  --color-canvas: #f6f6f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f1f4;
+  --color-surface-3: #e9e9ee;
+
+  --color-line: #e7e7ec;
+  --color-line-strong: #d7d7df;
+
+  --color-ink: #1b1b21;
+  --color-ink-2: #3b3b46;
+  --color-muted: #86868f;
+  --color-muted-2: #a7a7b0;
+
+  --color-accent: #6d5efc;
+  --color-accent-hover: #5a4bef;
+  --color-accent-soft: #ecebff;
+  --color-accent-ink: #ffffff;
+
+  --color-task: #3b82f6;
+  --color-task-soft: #e8f1ff;
+  --color-milestone: #8b5cf6;
+  --color-milestone-soft: #f0eaff;
+  --color-objective: #10b981;
+  --color-objective-soft: #e2f7ef;
+
+  --color-todo: #94a3b8;
+  --color-todo-soft: #eef1f5;
+  --color-progress: #f59e0b;
+  --color-progress-soft: #fdf1da;
+  --color-done: #22c55e;
+  --color-done-soft: #e2f7e9;
+
+  --color-danger: #ef4444;
+  --color-danger-soft: #fdeaea;
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --shadow-card: 0 1px 2px rgba(24, 24, 33, 0.04), 0 1px 3px rgba(24, 24, 33, 0.06);
+  --shadow-raised: 0 2px 4px rgba(24, 24, 33, 0.05), 0 6px 16px rgba(24, 24, 33, 0.08);
+  --shadow-pop: 0 8px 24px rgba(24, 24, 33, 0.12), 0 2px 6px rgba(24, 24, 33, 0.08);
+  --ring: 0 0 0 3px rgba(109, 94, 252, 0.28);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-hover);
+  }
+
+  /* Slim, unobtrusive scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-surface-3) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-surface-3);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--color-line-strong);
+    background-clip: padding-box;
+  }
+
+  input,
+  textarea,
+  button,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+    border-radius: var(--radius-sm);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  .shadow-raised {
+    box-shadow: var(--shadow-raised);
+  }
+  .shadow-pop {
+    box-shadow: var(--shadow-pop);
+  }
+
+  /* Editable surface that reveals affordance on hover */
+  .editable {
+    border-radius: var(--radius-sm);
+    transition:
+      background-color 140ms ease,
+      box-shadow 140ms ease;
+  }
+  .editable:hover {
+    background: var(--color-surface-2);
+  }
+}
+
+@keyframes groupy-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-pop-in {
+  animation: groupy-pop-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }

@@ -2,11 +2,22 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  const supabaseResponse = NextResponse.next({ request });
 
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+  // The local prototype runs entirely on the client (localStorage) with no
+  // Supabase project configured yet. Skip session refresh so the middleware
+  // never crashes on empty credentials; wire this up in the Auth phase.
+  if (!url || !key) {
+    return supabaseResponse;
+  }
+
+  let sessionResponse = supabaseResponse;
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    url,
+    key,
     {
       cookies: {
         getAll() {
@@ -16,9 +27,9 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
-          supabaseResponse = NextResponse.next({ request });
+          sessionResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
+            sessionResponse.cookies.set(name, value, options),
           );
         },
       },
@@ -29,5 +40,5 @@ export async function updateSession(request: NextRequest) {
   // add logic between createServerClient and this call.
   await supabase.auth.getUser();
 
-  return supabaseResponse;
+  return sessionResponse;
 }
