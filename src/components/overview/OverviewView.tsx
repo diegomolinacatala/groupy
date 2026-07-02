@@ -1,13 +1,5 @@
 "use client";
 
-import {
-  AlertTriangle,
-  CalendarClock,
-  CheckCircle2,
-  ListTodo,
-  Loader,
-  Users,
-} from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import { StatCard } from "./StatCard";
@@ -50,40 +42,41 @@ export function OverviewView() {
 
   return (
     <div className="flex h-full flex-col gap-5 p-4 md:p-6">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard
-          icon={ListTodo}
-          label="Módulos totales"
-          value={modules.length}
-          accent="var(--color-accent)"
-        />
-        <StatCard
-          icon={CheckCircle2}
-          label="Completados"
-          value={`${done} · ${percent}%`}
-          accent="var(--color-done)"
-        />
-        <StatCard
-          icon={Loader}
-          label="En curso"
-          value={inProgress}
-          accent="var(--color-progress)"
-        />
-        <StatCard
-          icon={overdue > 0 ? AlertTriangle : CalendarClock}
-          label={overdue > 0 ? "Retrasados" : "Días para la entrega"}
-          value={overdue > 0 ? overdue : (daysLeft ?? "—")}
-          accent={overdue > 0 ? "var(--color-danger)" : "var(--color-task)"}
-        />
+      <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-line bg-surface shadow-card lg:grid-cols-4">
+        <StatCard label="Módulos" value={modules.length} detail="en el plan" />
+        <div className="border-l border-line">
+          <StatCard
+            label="Completados"
+            value={`${percent}%`}
+            detail={`${done} de ${modules.length}`}
+          />
+        </div>
+        <div className="border-t border-line lg:border-l lg:border-t-0">
+          <StatCard label="En curso" value={inProgress} detail="ahora mismo" />
+        </div>
+        <div className="border-l border-t border-line lg:border-t-0">
+          {overdue > 0 ? (
+            <StatCard
+              label="Retrasados"
+              value={overdue}
+              detail="necesitan atención"
+              tone="danger"
+            />
+          ) : (
+            <StatCard
+              label="Entrega"
+              value={daysLeft ?? "—"}
+              detail="días restantes"
+            />
+          )}
+        </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-5">
         {/* Project details */}
         <section className="lg:col-span-3">
           <div className="flex h-full flex-col gap-4 rounded-2xl border border-line bg-surface p-5 shadow-card">
-            <h3 className="text-sm font-semibold text-ink">
-              Detalles del proyecto
-            </h3>
+            <h3 className="type-overline">Detalles del proyecto</h3>
 
             <Field label="Descripción">
               <InlineText
@@ -142,12 +135,7 @@ export function OverviewView() {
         {/* Team contribution */}
         <section className="lg:col-span-2">
           <div className="flex h-full flex-col gap-3 rounded-2xl border border-line bg-surface p-5 shadow-card">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-muted" />
-              <h3 className="text-sm font-semibold text-ink">
-                Contribución del equipo
-              </h3>
-            </div>
+            <h3 className="type-overline">Contribución del equipo</h3>
 
             {members.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted">
@@ -196,9 +184,7 @@ export function OverviewView() {
 
       {/* Upcoming deadlines */}
       <section className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-        <h3 className="mb-3 text-sm font-semibold text-ink">
-          Próximos vencimientos
-        </h3>
+        <h3 className="type-overline mb-3">Próximos vencimientos</h3>
         {upcoming.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted">
             No hay módulos pendientes con fecha. ¡Buen trabajo!

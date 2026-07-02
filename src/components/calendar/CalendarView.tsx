@@ -101,7 +101,7 @@ export function CalendarView() {
       <div className="flex h-full flex-col gap-4 p-4 md:p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold capitalize tracking-tight">
+            <h2 className="type-display text-2xl capitalize">
               {monthLabel(year, month)}
             </h2>
             <div className="flex items-center">

@@ -66,7 +66,7 @@ export function Topbar() {
             onCommit={(title) => updateProject({ title })}
             placeholder="Título del proyecto"
             ariaLabel="Título del proyecto"
-            className="-ml-1.5 text-lg font-semibold tracking-tight md:text-xl"
+            className="type-display -ml-1.5 text-xl md:text-2xl"
           />
           <div className="ml-0.5 mt-0.5 flex items-center gap-3 text-xs text-muted">
             <span className="inline-flex items-center gap-1">

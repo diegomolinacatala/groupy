@@ -23,7 +23,7 @@ export function TeamView() {
     <div className="flex h-full flex-col gap-4 p-4 md:p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight">Equipo</h2>
+          <h2 className="type-display text-2xl">Equipo</h2>
           <p className="text-sm text-muted">
             {project.members.length}{" "}
             {project.members.length === 1 ? "miembro" : "miembros"} · edita

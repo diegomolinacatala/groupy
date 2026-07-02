@@ -1,30 +1,26 @@
-import type { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils/cn";
 
 interface StatCardProps {
-  icon: LucideIcon;
   label: string;
   value: string | number;
-  accent?: string;
+  detail?: string;
+  tone?: "default" | "danger";
 }
 
-export function StatCard({ icon: Icon, label, value, accent }: StatCardProps) {
+/** Editorial stat: overline label over a large serif figure. */
+export function StatCard({ label, value, detail, tone = "default" }: StatCardProps) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 shadow-card">
-      <span
-        className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
-        style={{
-          backgroundColor: accent ? `${accent}1a` : "var(--color-surface-2)",
-          color: accent ?? "var(--color-muted)",
-        }}
+    <div className="px-5 py-4">
+      <p className="type-overline mb-2">{label}</p>
+      <div
+        className={cn(
+          "type-display text-3xl leading-none md:text-4xl",
+          tone === "danger" ? "text-danger" : "text-ink",
+        )}
       >
-        <Icon className="h-5 w-5" />
-      </span>
-      <div className="min-w-0">
-        <div className="text-xl font-semibold leading-none text-ink">
-          {value}
-        </div>
-        <div className="mt-1 truncate text-xs text-muted">{label}</div>
+        {value}
       </div>
+      {detail && <p className="mt-1.5 text-xs text-muted">{detail}</p>}
     </div>
   );
 }

@@ -7,6 +7,16 @@ import { createSeedProject } from "./seed";
 
 const STORAGE_KEY = "groupy:project:v1";
 
+/** Whether a project has already been created / seeded on this device. */
+export function hasStoredProject(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function loadProject(): Project {
   if (typeof window === "undefined") return createSeedProject();
   try {

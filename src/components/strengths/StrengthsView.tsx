@@ -28,9 +28,7 @@ export function StrengthsView() {
   return (
     <div className="flex h-full flex-col gap-5 p-4 md:p-6">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight">
-          Fortalezas del equipo
-        </h2>
+        <h2 className="type-display text-2xl">Fortalezas del equipo</h2>
         <p className="text-sm text-muted">
           Aquello que hacéis bien juntos. Añade, edita o quita en un clic.
         </p>
@@ -54,7 +52,7 @@ export function StrengthsView() {
             type="button"
             onClick={add}
             disabled={!draft.trim()}
-            className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-accent px-4 text-sm font-medium text-accent-ink transition-colors hover:bg-accent-hover disabled:opacity-40"
+            className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-ink px-4 text-sm font-medium text-canvas transition-colors hover:bg-ink-hover disabled:opacity-40"
           >
             <Plus className="h-4 w-4" />
             Añadir

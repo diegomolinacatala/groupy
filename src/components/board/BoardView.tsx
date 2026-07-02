@@ -75,7 +75,7 @@ export function BoardView() {
     >
       <div className="flex h-full flex-col gap-4 p-4 md:p-6">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight">Tablero</h2>
+          <h2 className="type-display text-2xl">Tablero</h2>
           <p className="text-sm text-muted">
             Arrastra los módulos entre columnas para cambiar su estado.
           </p>

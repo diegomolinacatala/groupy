@@ -1,46 +1,48 @@
 @import "tailwindcss";
 
 /*
-  Groupy design tokens — "friendly productivity" light theme.
-  Neutral warm canvas, one violet accent, semantic colours for module
-  types / statuses. Exposed through @theme so Tailwind generates
-  bg-*, text-*, border-* utilities (e.g. bg-surface, text-muted).
+  Groupy design tokens — "quiet editorial" light theme.
+  Warm paper canvas, near-black ink, one indigo accent used sparingly
+  (progress, active states, today). Primary actions are ink-on-paper.
+  Display type is Fraunces (serif); UI type is Geist. Exposed through
+  @theme so Tailwind generates bg-*, text-*, border-*, font-* utilities.
 */
 @theme {
-  --color-canvas: #f6f6f8;
-  --color-surface: #ffffff;
-  --color-surface-2: #f1f1f4;
-  --color-surface-3: #e9e9ee;
+  --color-canvas: #f6f4ef;
+  --color-surface: #fffefb;
+  --color-surface-2: #f0eee7;
+  --color-surface-3: #e7e4da;
 
-  --color-line: #e7e7ec;
-  --color-line-strong: #d7d7df;
+  --color-line: #e5e2d8;
+  --color-line-strong: #d3cfc2;
 
-  --color-ink: #1b1b21;
-  --color-ink-2: #3b3b46;
-  --color-muted: #86868f;
-  --color-muted-2: #a7a7b0;
+  --color-ink: #1d1c17;
+  --color-ink-hover: #35332c;
+  --color-ink-2: #4a483f;
+  --color-muted: #8b8779;
+  --color-muted-2: #aeaa9b;
 
-  --color-accent: #6d5efc;
-  --color-accent-hover: #5a4bef;
-  --color-accent-soft: #ecebff;
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
+  --color-accent-soft: #eceafb;
   --color-accent-ink: #ffffff;
 
-  --color-task: #3b82f6;
-  --color-task-soft: #e8f1ff;
-  --color-milestone: #8b5cf6;
-  --color-milestone-soft: #f0eaff;
-  --color-objective: #10b981;
-  --color-objective-soft: #e2f7ef;
+  --color-task: #3f66b8;
+  --color-task-soft: #e9eef8;
+  --color-milestone: #6d5ac9;
+  --color-milestone-soft: #efecf9;
+  --color-objective: #2e7d5b;
+  --color-objective-soft: #e5f1ea;
 
-  --color-todo: #94a3b8;
-  --color-todo-soft: #eef1f5;
-  --color-progress: #f59e0b;
-  --color-progress-soft: #fdf1da;
-  --color-done: #22c55e;
-  --color-done-soft: #e2f7e9;
+  --color-todo: #97927f;
+  --color-todo-soft: #efede4;
+  --color-progress: #b07d22;
+  --color-progress-soft: #f6eeda;
+  --color-done: #3a7d4e;
+  --color-done-soft: #e5f0e6;
 
-  --color-danger: #ef4444;
-  --color-danger-soft: #fdeaea;
+  --color-danger: #bb4a3c;
+  --color-danger-soft: #f7e9e5;
 
   --radius-sm: 8px;
   --radius: 12px;
@@ -48,13 +50,15 @@
   --radius-xl: 22px;
 
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
 }
 
 :root {
-  --shadow-card: 0 1px 2px rgba(24, 24, 33, 0.04), 0 1px 3px rgba(24, 24, 33, 0.06);
-  --shadow-raised: 0 2px 4px rgba(24, 24, 33, 0.05), 0 6px 16px rgba(24, 24, 33, 0.08);
-  --shadow-pop: 0 8px 24px rgba(24, 24, 33, 0.12), 0 2px 6px rgba(24, 24, 33, 0.08);
-  --ring: 0 0 0 3px rgba(109, 94, 252, 0.28);
+  --shadow-card: 0 1px 2px rgba(29, 28, 23, 0.04), 0 1px 3px rgba(29, 28, 23, 0.05);
+  --shadow-raised: 0 2px 4px rgba(29, 28, 23, 0.05), 0 6px 16px rgba(29, 28, 23, 0.07);
+  --shadow-pop: 0 8px 24px rgba(29, 28, 23, 0.12), 0 2px 6px rgba(29, 28, 23, 0.08);
+  --ring: 0 0 0 3px rgba(79, 70, 229, 0.24);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @layer base {
@@ -125,6 +129,23 @@
     box-shadow: var(--shadow-pop);
   }
 
+  /* Display headline: serif with tightened tracking and optical sizing. */
+  .type-display {
+    font-family: var(--font-display);
+    font-weight: 480;
+    letter-spacing: -0.015em;
+    font-optical-sizing: auto;
+  }
+
+  /* Small uppercase label used across editorial surfaces. */
+  .type-overline {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+
   /* Editable surface that reveals affordance on hover */
   .editable {
     border-radius: var(--radius-sm);
@@ -149,5 +170,50 @@
 }
 
 .animate-pop-in {
-  animation: groupy-pop-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: groupy-pop-in 180ms var(--ease-out-expo);
+}
+
+/* Wizard step entrance: content rises softly into place. */
+@keyframes groupy-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-rise {
+  animation: groupy-rise 480ms var(--ease-out-expo) both;
+}
+
+/* Staggered variant for lists inside a step. */
+.animate-rise-delayed {
+  animation: groupy-rise 480ms var(--ease-out-expo) both;
+  animation-delay: 120ms;
+}
+
+@keyframes groupy-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade {
+  animation: groupy-fade 600ms ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .animate-rise-delayed,
+  .animate-fade,
+  .animate-pop-in {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
 }
