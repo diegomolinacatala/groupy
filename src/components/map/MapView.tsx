@@ -1,230 +1,330 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Lock, MousePointerClick, Package } from "lucide-react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { ArrowDown, GripVertical, Plus, Trash2 } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
-import { buildProjectFlow, orderedDeliverables } from "@/lib/data/flow";
-import { Avatar } from "@/components/ui/Avatar";
-import { MemberFilter } from "@/components/ui/MemberFilter";
-import { TaskSquare } from "./TaskSquare";
-import { MiniFlowchart } from "./MiniFlowchart";
-import type { ProjectModule, TeamMember } from "@/lib/data/types";
+import { buildProjectFlow, orderedBlocks } from "@/lib/data/flow";
+import type { BlockFlow, ProjectFlow } from "@/lib/data/flow";
+import {
+  BLOCK_MODE_META,
+  type Project,
+  type ProjectModule,
+} from "@/lib/data/types";
+import { InlineText } from "@/components/ui/InlineText";
 import { cn } from "@/lib/utils/cn";
+import { BlockGraph, TaskNodeStatic } from "./BlockGraph";
 
-const NO_DATE = "9999-12-31";
+// One flowchart per BLOQUE. Blocks are stacked containers (grip to reorder,
+// inline rename, mode toggle); the order between "En orden" blocks is drawn
+// as a connector between containers — never as a padlock. Task nodes drag
+// between containers to change block; ports drag to create dependencies.
 
-function byFlowDate(a: ProjectModule, b: ProjectModule): number {
-  const dateA = a.dueDate ?? NO_DATE;
-  const dateB = b.dueDate ?? NO_DATE;
-  if (dateA !== dateB) return dateA < dateB ? -1 : 1;
-  return a.order - b.order;
-}
-
-/**
- * Dependency map: one row of coloured squares per member (their tasks in
- * flow order), plus the entregas row. Selecting a square opens the mini
- * flowchart with its prerequisites and dependents.
- */
 export function MapView() {
-  const { project, currentMemberId } = useProject();
-  const { openModule, focusMemberId, setFocusMemberId } = useDashboardUi();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const {
+    project,
+    currentMemberId,
+    toggleDependency,
+    setModuleBlock,
+    addBlock,
+    updateBlock,
+    deleteBlock,
+    reorderBlocks,
+    addModule,
+  } = useProject();
+  const { openModule } = useDashboardUi();
+  const [activeTask, setActiveTask] = useState<ProjectModule | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
 
   const flow = useMemo(() => buildProjectFlow(project), [project]);
-  const deliverables = useMemo(() => orderedDeliverables(project), [project]);
+  const blocks = orderedBlocks(project);
 
-  const tasksOf = (member: TeamMember | null): ProjectModule[] =>
-    project.modules
-      .filter(
-        (m) =>
-          m.type !== "milestone" &&
-          (member
-            ? m.assigneeIds.includes(member.id)
-            : m.assigneeIds.length === 0),
-      )
-      .sort(byFlowDate);
+  // Each person edits only the deps of THEIR OWN tasks; without a session
+  // identity (local demo, nobody picked) everything is editable.
+  const canEditDeps = (target: ProjectModule) =>
+    !currentMemberId || target.assigneeIds.includes(currentMemberId);
 
-  const visibleMembers = focusMemberId
-    ? project.members.filter((m) => m.id === focusMemberId)
-    : project.members;
-  const rows: { member: TeamMember | null; tasks: ProjectModule[] }[] =
-    visibleMembers.map((member) => ({ member, tasks: tasksOf(member) }));
-  const unassigned = tasksOf(null);
-  if (!focusMemberId && unassigned.length > 0) {
-    rows.push({ member: null, tasks: unassigned });
-  }
+  const handleDragStart = (event: DragStartEvent) => {
+    const data = event.active.data.current;
+    if (data?.type === "task") {
+      setActiveTask(
+        project.modules.find((m) => m.id === data.taskId) ?? null,
+      );
+    }
+  };
 
-  const selected = selectedId ? flow.byId.get(selectedId) : null;
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveTask(null);
+    const { active, over } = event;
+    if (!over) return;
+    const data = active.data.current;
+
+    if (data?.type === "block") {
+      if (active.id === over.id) return;
+      const ids = blocks.map((b) => b.id);
+      const from = ids.indexOf(String(active.id));
+      const to = ids.indexOf(String(over.id));
+      if (from < 0 || to < 0) return;
+      ids.splice(to, 0, ...ids.splice(from, 1));
+      reorderBlocks(ids);
+      return;
+    }
+
+    if (data?.type === "task") {
+      const overData = over.data.current;
+      // Dropping on the graph zone or on the block container both count.
+      const blockId =
+        overData?.type === "zone"
+          ? (overData.blockId as string)
+          : blocks.some((b) => b.id === String(over.id))
+            ? String(over.id)
+            : null;
+      const mod = project.modules.find((m) => m.id === data.taskId);
+      if (blockId && mod && mod.blockId !== blockId) {
+        setModuleBlock(mod.id, blockId);
+      }
+    }
+  };
 
   return (
-    <div className="flex h-full flex-col gap-5 p-4 md:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="type-display text-2xl">Mapa de dependencias</h2>
-          <p className="text-sm text-muted">
-            Cada cuadrado es una tarea; el candado pequeño lleva el color de
-            quien está esperando a que se complete.
-          </p>
+    <DndContext
+      // Stable id: dnd-kit's auto ids differ between server and client
+      // (hydration mismatch on the cloud dashboard).
+      id="map-dnd"
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveTask(null)}
+    >
+      <div className="flex h-full flex-col gap-4 p-4 md:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="type-display text-2xl">Mapa</h2>
+          <button
+            type="button"
+            onClick={() => addBlock()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-line-strong px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Bloque
+          </button>
         </div>
-        <MemberFilter
-          members={project.members}
-          value={focusMemberId}
-          onChange={setFocusMemberId}
-          currentMemberId={currentMemberId}
-        />
-      </div>
 
-      <div className="rounded-2xl border border-line bg-surface p-4 shadow-card md:p-5">
-        {/* Entregas row */}
-        {deliverables.length > 0 && (
-          <div className="mb-4 flex items-center gap-4 border-b border-line pb-4">
-            <span className="flex w-36 shrink-0 items-center gap-2 text-xs font-medium text-muted md:w-44">
-              <Package className="h-4 w-4" />
-              Entregas
-            </span>
-            <div className="flex flex-wrap items-center gap-3">
-              {deliverables.map((deliverable) => {
-                const entry = flow.byId.get(deliverable.id);
-                const isSelected = selectedId === deliverable.id;
-                return (
-                  <button
-                    key={deliverable.id}
-                    type="button"
-                    onClick={() => setSelectedId(deliverable.id)}
-                    title={`${deliverable.title || "Sin título"} · ${
-                      entry?.state === "done"
-                        ? "Entregada"
-                        : entry?.state === "available"
-                          ? "Lista para entregar"
-                          : "En preparación"
-                    }`}
-                    aria-pressed={isSelected}
-                    className={cn(
-                      "grid h-9 w-9 rotate-45 place-items-center rounded-md border transition-all",
-                      isSelected
-                        ? "scale-105 ring-2 ring-accent ring-offset-2 ring-offset-surface"
-                        : "hover:scale-105",
-                      entry?.state === "done"
-                        ? "border-milestone bg-milestone text-white"
-                        : entry?.state === "available"
-                          ? "border-milestone bg-milestone-soft"
-                          : "border-dashed border-line-strong bg-surface-2/60",
-                    )}
-                  >
-                    <span className="-rotate-45">
-                      {entry?.state === "done" ? (
-                        <Check className="h-4 w-4" strokeWidth={3} />
-                      ) : entry?.state === "locked" ? (
-                        <Lock className="h-3.5 w-3.5 text-muted" />
-                      ) : (
-                        <Package
-                          className="h-3.5 w-3.5"
-                          style={{ color: "var(--color-milestone)" }}
-                        />
-                      )}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Member rows */}
-        <div className="flex flex-col gap-3.5">
-          {rows.map(({ member, tasks }) => (
-            <div key={member?.id ?? "unassigned"} className="flex items-center gap-4">
-              <span className="flex w-36 shrink-0 items-center gap-2 md:w-44">
-                {member ? (
-                  <>
-                    <Avatar member={member} size="sm" />
-                    <span className="min-w-0 truncate text-sm font-medium text-ink">
-                      {member.name}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-xs font-medium text-muted">
-                    Sin asignar
-                  </span>
-                )}
-              </span>
-              <div className="flex flex-wrap items-center gap-2.5 py-0.5">
-                {tasks.length === 0 ? (
-                  <span className="text-xs text-muted-2">Sin tareas</span>
-                ) : (
-                  tasks.map((task) => {
-                    const entry = flow.byId.get(task.id);
-                    if (!entry) return null;
-                    return (
-                      <TaskSquare
-                        key={task.id}
-                        flow={entry}
-                        member={member}
-                        members={project.members}
-                        selected={selectedId === task.id}
-                        onSelect={() =>
-                          setSelectedId(selectedId === task.id ? null : task.id)
-                        }
-                      />
-                    );
+        <SortableContext
+          items={blocks.map((b) => b.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="flex flex-col">
+            {flow.blocks.map((blockFlow, index) => (
+              <BlockSection
+                key={blockFlow.block.id}
+                project={project}
+                flow={flow}
+                blockFlow={blockFlow}
+                isFirst={index === 0}
+                canDelete={blocks.length > 1}
+                canEditDeps={canEditDeps}
+                onRename={(name) => updateBlock(blockFlow.block.id, { name })}
+                onToggleMode={() =>
+                  updateBlock(blockFlow.block.id, {
+                    mode:
+                      blockFlow.block.mode === "sequence"
+                        ? "independent"
+                        : "sequence",
                   })
-                )}
-              </div>
-            </div>
-          ))}
-          {rows.length === 0 && (
-            <p className="py-4 text-center text-sm text-muted">
-              Añade miembros y tareas para ver el mapa.
-            </p>
-          )}
+                }
+                onDelete={() => {
+                  if (window.confirm("¿Eliminar el bloque? Sus tareas pasan al primero.")) {
+                    deleteBlock(blockFlow.block.id);
+                  }
+                }}
+                onToggleDependency={toggleDependency}
+                onOpen={openModule}
+                onAddTask={() => {
+                  const id = addModule({ blockId: blockFlow.block.id });
+                  openModule(id);
+                }}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </div>
+
+      <DragOverlay dropAnimation={null}>
+        {activeTask ? (
+          <TaskNodeStatic project={project} module={activeTask} />
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+function BlockSection({
+  project,
+  flow,
+  blockFlow,
+  isFirst,
+  canDelete,
+  canEditDeps,
+  onRename,
+  onToggleMode,
+  onDelete,
+  onToggleDependency,
+  onOpen,
+  onAddTask,
+}: {
+  project: Project;
+  flow: ProjectFlow;
+  blockFlow: BlockFlow;
+  isFirst: boolean;
+  canDelete: boolean;
+  canEditDeps: (target: ProjectModule) => boolean;
+  onRename: (name: string) => void;
+  onToggleMode: () => void;
+  onDelete: () => void;
+  onToggleDependency: (targetId: string, depId: string) => void;
+  onOpen: (id: string) => void;
+  onAddTask: () => void;
+}) {
+  const { block, state, modules, doneCount } = blockFlow;
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: block.id, data: { type: "block" } });
+
+  const { setNodeRef: setZoneRef, isOver } = useDroppable({
+    id: `zone:${block.id}`,
+    data: { type: "zone", blockId: block.id },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(isDragging && "z-10 opacity-80")}
+    >
+      {/* Sequence connector: the visual language for block order. */}
+      {!isFirst && block.mode === "sequence" && (
+        <div
+          aria-hidden
+          className="flex flex-col items-center py-1 text-muted-2"
+        >
+          <span className="h-2.5 w-px bg-line-strong" />
+          <ArrowDown className="h-3.5 w-3.5" />
         </div>
-      </div>
+      )}
+      {!isFirst && block.mode !== "sequence" && <div className="h-4" />}
 
-      {/* Detail: mini flowchart */}
-      <section className="rounded-2xl border border-line bg-surface p-4 shadow-card md:p-5">
-        {selected ? (
-          <MiniFlowchart
-            flow={flow}
-            centerId={selected.module.id}
-            members={project.members}
-            onSelect={(id) => setSelectedId(id)}
-            onOpen={openModule}
-          />
-        ) : (
-          <p className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
-            <MousePointerClick className="h-4 w-4" />
-            Selecciona una tarea o una entrega para ver de qué depende y qué
-            desbloquea.
-          </p>
+      <section
+        className={cn(
+          "group/block rounded-2xl border bg-surface shadow-card transition-all",
+          state === "waiting"
+            ? "border-dashed border-line-strong opacity-70"
+            : "border-line",
+          isOver && "ring-2 ring-accent/30",
         )}
-      </section>
+      >
+        <header className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-line px-3 py-2.5 md:px-4">
+          <button
+            type="button"
+            aria-label={`Mover el bloque ${block.name}`}
+            {...attributes}
+            {...listeners}
+            className="cursor-grab touch-none rounded p-0.5 text-muted-2 transition-colors hover:text-ink active:cursor-grabbing"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
 
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted">
-        <span className="flex items-center gap-1.5">
-          <span className="h-3.5 w-3.5 rounded border border-ink-2 bg-ink-2/20" />
-          Disponible
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="grid h-3.5 w-3.5 place-items-center rounded border border-dashed border-line-strong">
-            <Lock className="h-2 w-2" />
+          <InlineText
+            value={block.name}
+            onCommit={onRename}
+            placeholder="Nombre del bloque"
+            ariaLabel="Nombre del bloque"
+            className="type-display -ml-1 text-lg"
+          />
+
+          <span className="text-xs tabular-nums text-muted">
+            {modules.length > 0 ? `${doneCount}/${modules.length}` : ""}
           </span>
-          Bloqueada
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="grid h-3.5 w-3.5 place-items-center rounded bg-ink-2 text-white">
-            <Check className="h-2 w-2" strokeWidth={3} />
-          </span>
-          Hecha
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="grid h-3.5 w-3.5 place-items-center rounded-full bg-danger text-white">
-            <Lock className="h-2 w-2" />
-          </span>
-          Alguien espera esta tarea (color de quien espera)
-        </span>
-      </div>
+
+          <button
+            type="button"
+            onClick={onToggleMode}
+            title="Cambiar el orden del bloque"
+            className={cn(
+              "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+              block.mode === "sequence"
+                ? "border-ink/20 bg-surface-2 text-ink"
+                : "border-line text-muted hover:border-line-strong hover:text-ink",
+            )}
+          >
+            {BLOCK_MODE_META[block.mode].label}
+          </button>
+
+          {state === "waiting" && blockFlow.waitsFor && (
+            <span className="text-[11px] text-muted">
+              Espera a «{blockFlow.waitsFor.name}»
+            </span>
+          )}
+          {state === "complete" && (
+            <span
+              className="rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+              style={{
+                backgroundColor: "var(--color-done-soft)",
+                color: "var(--color-done)",
+              }}
+            >
+              Completo
+            </span>
+          )}
+
+          {canDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              aria-label={`Eliminar el bloque ${block.name}`}
+              className="ml-auto rounded p-1 text-muted-2 opacity-0 transition-all hover:bg-danger-soft hover:text-danger group-hover/block:opacity-100"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </header>
+
+        <div ref={setZoneRef} className="p-3 md:p-4">
+          <BlockGraph
+            project={project}
+            flow={flow}
+            blockFlow={blockFlow}
+            canEditDeps={canEditDeps}
+            onToggleDependency={onToggleDependency}
+            onOpen={onOpen}
+            onAddTask={onAddTask}
+          />
+        </div>
+      </section>
     </div>
   );
 }

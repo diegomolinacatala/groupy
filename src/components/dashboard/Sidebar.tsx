@@ -16,11 +16,7 @@ export function Sidebar() {
   const percent = total === 0 ? 0 : Math.round((doneCount / total) * 100);
 
   const handleReset = () => {
-    if (
-      window.confirm(
-        "¿Restablecer los datos de ejemplo? Se perderán tus cambios locales.",
-      )
-    ) {
+    if (window.confirm("¿Restaurar la demo? Se perderán los cambios locales.")) {
       reset();
     }
   };
@@ -96,7 +92,7 @@ export function Sidebar() {
             className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
             <RotateCcw className="h-3.5 w-3.5" />
-            Datos de ejemplo
+            Restaurar demo
           </button>
         )}
       </div>

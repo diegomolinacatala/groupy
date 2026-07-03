@@ -4,36 +4,37 @@ import { useState } from "react";
 import { Lock, Plus, Trash2, UserPlus, X } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
-import { buildProjectFlow } from "@/lib/data/flow";
+import { buildProjectFlow, orderedBlocks } from "@/lib/data/flow";
 import { SlideOver } from "@/components/ui/SlideOver";
 import { InlineText } from "@/components/ui/InlineText";
 import { Segmented } from "@/components/ui/Segmented";
 import { DateField } from "@/components/ui/DateField";
 import { Field } from "@/components/ui/Field";
-import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { IconButton } from "@/components/ui/IconButton";
 import { AssigneePicker } from "@/components/ui/AssigneePicker";
-import { DeliverableField } from "./DeliverableField";
 import { DependencyField } from "./DependencyField";
 import {
-  MODULE_TYPE_META,
+  DOC_TYPES,
+  DOC_TYPE_META,
+  IMPORTANCE_MAX,
   type ModuleStatus,
-  type ModuleType,
 } from "@/lib/data/types";
 import { cn } from "@/lib/utils/cn";
-
-const TYPE_OPTIONS: { value: ModuleType; label: string }[] = [
-  { value: "task", label: "Tarea" },
-  { value: "milestone", label: "Entrega" },
-  { value: "objective", label: "Objetivo" },
-];
 
 const STATUS_OPTIONS: { value: ModuleStatus; label: string }[] = [
   { value: "todo", label: "Pendiente" },
   { value: "in_progress", label: "En curso" },
-  { value: "done", label: "Hecho" },
+  { value: "done", label: "Hecha" },
 ];
+
+const pickerChip = (active: boolean) =>
+  cn(
+    "rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
+    active
+      ? "border-ink bg-ink text-canvas"
+      : "border-line bg-surface text-ink-2 hover:border-line-strong",
+  );
 
 export function ModuleEditor() {
   const {
@@ -42,7 +43,8 @@ export function ModuleEditor() {
     deleteModule,
     toggleAssignee,
     toggleDependency,
-    setDeliverable,
+    setModuleBlock,
+    setImportance,
     addChecklistItem,
     updateChecklistItem,
     deleteChecklistItem,
@@ -54,17 +56,16 @@ export function ModuleEditor() {
     project.modules.find((m) => m.id === editingModuleId) ?? null;
   const open = Boolean(activeModule);
 
-  // Derived flow state: is this module locked, and by what?
+  // Derived flow state: is this task locked, and by what?
   const flowEntry = activeModule
     ? buildProjectFlow(project).byId.get(activeModule.id) ?? null
     : null;
   const isLocked = flowEntry?.state === "locked";
-  const derivedBlockers =
-    flowEntry?.requires.filter((l) => l.kind !== "direct") ?? [];
+  const blocks = orderedBlocks(project);
 
   const handleDelete = () => {
     if (!activeModule) return;
-    if (window.confirm("¿Eliminar este módulo?")) {
+    if (window.confirm("¿Eliminar esta tarea?")) {
       deleteModule(activeModule.id);
       closeModule();
     }
@@ -78,7 +79,6 @@ export function ModuleEditor() {
     setChecklistDraft("");
   };
 
-  const typeMeta = activeModule ? MODULE_TYPE_META[activeModule.type] : null;
   const assignees = activeModule
     ? project.members.filter((m) => activeModule.assigneeIds.includes(m.id))
     : [];
@@ -88,16 +88,12 @@ export function ModuleEditor() {
 
   return (
     <SlideOver open={open} onClose={closeModule}>
-      {activeModule && typeMeta && (
+      {activeModule && (
         <>
           <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
-            <Badge
-              label={typeMeta.label}
-              color={typeMeta.color}
-              soft={typeMeta.soft}
-            />
+            <span className="type-overline">Tarea</span>
             <div className="flex items-center gap-1">
-              <IconButton label="Eliminar módulo" tone="danger" onClick={handleDelete}>
+              <IconButton label="Eliminar tarea" tone="danger" onClick={handleDelete}>
                 <Trash2 className="h-4 w-4" />
               </IconButton>
               <IconButton label="Cerrar" onClick={closeModule}>
@@ -110,8 +106,8 @@ export function ModuleEditor() {
             <InlineText
               value={activeModule.title}
               onCommit={(title) => updateModule(activeModule.id, { title })}
-              placeholder="Título del módulo"
-              ariaLabel="Título del módulo"
+              placeholder="Título de la tarea"
+              ariaLabel="Título de la tarea"
               className="-ml-1.5 text-lg font-semibold"
             />
 
@@ -125,37 +121,29 @@ export function ModuleEditor() {
               >
                 <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>
-                  <strong className="font-semibold">Bloqueada.</strong> Esperando
-                  a:{" "}
-                  {flowEntry.blockers
-                    .map((b) => `«${b.module.title || "Sin título"}»`)
-                    .join(", ")}
+                  {flowEntry.blockers.length > 0
+                    ? `Espera a ${flowEntry.blockers
+                        .map((b) => `«${b.title || "Sin título"}»`)
+                        .join(", ")}`
+                    : flowEntry.waitingForBlock
+                      ? `Espera al bloque «${flowEntry.waitingForBlock.name}»`
+                      : "Bloqueada"}
                 </span>
               </div>
             )}
 
             <div className="mt-4 flex flex-col gap-4">
-              <Field label="Tipo">
-                <Segmented
-                  options={TYPE_OPTIONS}
-                  value={activeModule.type}
-                  onChange={(type) => updateModule(activeModule.id, { type })}
-                  size="sm"
-                />
-              </Field>
-
               <Field label="Estado">
                 <Segmented
                   options={STATUS_OPTIONS.map((option) => ({
                     ...option,
-                    // The padlock: a locked module can't move forward until
-                    // its prerequisites are done (going back is always fine).
+                    // The padlock: a locked task can't move forward until its
+                    // prerequisites are done (going back is always fine).
                     disabled:
                       isLocked &&
                       option.value !== "todo" &&
                       option.value !== activeModule.status,
-                    disabledReason:
-                      "Bloqueada: completa antes sus dependencias",
+                    disabledReason: "Bloqueada",
                   }))}
                   value={activeModule.status}
                   onChange={(status) =>
@@ -165,28 +153,85 @@ export function ModuleEditor() {
                 />
               </Field>
 
-              <Field label="Fecha de entrega">
+              <Field label="Bloque">
+                <div className="flex flex-wrap gap-1.5">
+                  {blocks.map((block) => (
+                    <button
+                      key={block.id}
+                      type="button"
+                      onClick={() => setModuleBlock(activeModule.id, block.id)}
+                      className={pickerChip(activeModule.blockId === block.id)}
+                    >
+                      {block.name || "Sin nombre"}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              <Field label="Tipo">
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateModule(activeModule.id, { docType: null })
+                    }
+                    className={pickerChip(activeModule.docType === null)}
+                  >
+                    Sin tipo
+                  </button>
+                  {DOC_TYPES.map((docType) => (
+                    <button
+                      key={docType}
+                      type="button"
+                      title={DOC_TYPE_META[docType].label}
+                      onClick={() =>
+                        updateModule(activeModule.id, { docType })
+                      }
+                      className={cn(
+                        pickerChip(activeModule.docType === docType),
+                        "font-mono",
+                      )}
+                    >
+                      {DOC_TYPE_META[docType].badge}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              <Field label="Importancia">
+                <div className="flex items-end gap-1 pt-1">
+                  {Array.from({ length: IMPORTANCE_MAX }, (_, i) => {
+                    const value = i + 1;
+                    const active = value <= activeModule.importance;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-label={`Importancia ${value}`}
+                        onClick={() => setImportance(activeModule.id, value)}
+                        style={{ height: 8 + value * 1.8 }}
+                        className={cn(
+                          "w-4 rounded-sm border transition-colors",
+                          active
+                            ? "border-ink bg-ink"
+                            : "border-line bg-surface-2 hover:border-line-strong",
+                        )}
+                      />
+                    );
+                  })}
+                </div>
+              </Field>
+
+              <Field label="Fecha">
                 <DateField
                   value={activeModule.dueDate}
                   onChange={(dueDate) =>
                     updateModule(activeModule.id, { dueDate })
                   }
-                  ariaLabel="Fecha de entrega del módulo"
+                  ariaLabel="Fecha límite de la tarea"
                   className="w-full"
                 />
               </Field>
-
-              {activeModule.type !== "milestone" && (
-                <Field label="Entrega">
-                  <DeliverableField
-                    project={project}
-                    module={activeModule}
-                    onChange={(deliverableId) =>
-                      setDeliverable(activeModule.id, deliverableId)
-                    }
-                  />
-                </Field>
-              )}
 
               <Field label="Depende de">
                 <DependencyField
@@ -196,15 +241,6 @@ export function ModuleEditor() {
                     toggleDependency(activeModule.id, depId)
                   }
                 />
-                {derivedBlockers.length > 0 && (
-                  <p className="mt-1.5 text-xs text-muted-2">
-                    {activeModule.type === "milestone"
-                      ? `Además, esta entrega espera a sus ${derivedBlockers.length} tareas asignadas.`
-                      : `Además espera a la entrega anterior: «${
-                          derivedBlockers[0].module.title || "Sin título"
-                        }».`}
-                  </p>
-                )}
               </Field>
 
               <Field label="Responsables">
@@ -256,9 +292,9 @@ export function ModuleEditor() {
                   onCommit={(description) =>
                     updateModule(activeModule.id, { description })
                   }
-                  placeholder="Añade detalles, enlaces o notas…"
+                  placeholder="Notas, enlaces…"
                   multiline
-                  ariaLabel="Descripción del módulo"
+                  ariaLabel="Descripción de la tarea"
                   className="-ml-1.5 min-h-16 rounded-lg bg-surface-2/50 text-sm text-ink-2"
                 />
               </Field>
@@ -285,7 +321,7 @@ export function ModuleEditor() {
                             done: !item.done,
                           })
                         }
-                        aria-label={item.done ? "Marcar pendiente" : "Marcar hecho"}
+                        aria-label={item.done ? "Marcar pendiente" : "Marcar hecha"}
                         className={cn(
                           "grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors",
                           item.done

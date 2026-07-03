@@ -1,24 +1,49 @@
-import type { Project } from "./types";
+import type { Project, ProjectBlock } from "./types";
+import { clampImportance, IMPORTANCE_DEFAULT } from "./types";
 import { createSeedProject } from "./seed";
 
 // localStorage-backed persistence for the local prototype. Isolated here so the
 // rest of the app never touches storage directly — a future Supabase data layer
 // can replace this module wholesale.
 
-const STORAGE_KEY = "groupy:project:v1";
+// v2: the block redesign (blocks[], blockId, importance, docType, per-member
+// strengths) replaced the milestone/entrega model. Old v1 payloads are
+// abandoned — the demo reseeds rather than migrating throwaway data.
+const STORAGE_KEY = "groupy:project:v2";
+const IDENTITY_KEY = "groupy:me:v1";
 
 /**
- * Backfills fields added after a payload was stored (e.g. the flow fields
- * `dependsOn` / `deliverableId`) so older local projects keep working
- * without bumping the storage key.
+ * Backfills fields added after a payload was stored, and restores the model
+ * invariant that every task lives in exactly one existing block.
  */
 function normalizeProject(parsed: Project): Project {
+  const blocks: ProjectBlock[] = Array.isArray(parsed.blocks)
+    ? parsed.blocks
+    : [];
+  if (blocks.length === 0) {
+    blocks.push({ id: crypto.randomUUID(), name: "General", mode: "independent", order: 0 });
+  }
+  const blockIds = new Set(blocks.map((b) => b.id));
+  const firstBlockId = [...blocks].sort((a, b) => a.order - b.order)[0].id;
   return {
     ...parsed,
+    blocks,
+    members: parsed.members.map((m) => ({
+      ...m,
+      strengths: Array.isArray(m.strengths) ? m.strengths : [],
+    })),
     modules: parsed.modules.map((m) => ({
       ...m,
       dependsOn: Array.isArray(m.dependsOn) ? m.dependsOn : [],
-      deliverableId: typeof m.deliverableId === "string" ? m.deliverableId : null,
+      blockId:
+        typeof m.blockId === "string" && blockIds.has(m.blockId)
+          ? m.blockId
+          : firstBlockId,
+      importance:
+        typeof m.importance === "number"
+          ? clampImportance(m.importance)
+          : IMPORTANCE_DEFAULT,
+      docType: typeof m.docType === "string" ? m.docType : null,
     })),
   };
 }
@@ -69,4 +94,41 @@ export function resetProject(): Project {
   const seeded = createSeedProject();
   saveProject(seeded);
   return seeded;
+}
+
+/**
+ * Identity of the local (demo) user: which member "soy yo". Cloud mode gets
+ * this from the claimed member row instead; these helpers are local-only.
+ * Exposed as a tiny external store so React reads it via
+ * useSyncExternalStore (hydration-safe, no setState-in-effect).
+ */
+const identityListeners = new Set<() => void>();
+
+export function subscribeLocalIdentity(onChange: () => void): () => void {
+  identityListeners.add(onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    identityListeners.delete(onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+export function loadLocalIdentity(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(IDENTITY_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveLocalIdentity(memberId: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (memberId) window.localStorage.setItem(IDENTITY_KEY, memberId);
+    else window.localStorage.removeItem(IDENTITY_KEY);
+  } catch {
+    // Best effort — the picker will just ask again next session.
+  }
+  for (const listener of identityListeners) listener();
 }

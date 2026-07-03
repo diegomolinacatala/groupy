@@ -43,14 +43,15 @@ Supabase Anonymous Auth creates a persistent per-device session; the student onl
 `display_name` + `email` as profile data on their `group_members` row. RLS then works via
 `auth.uid()` for both roles — no parallel token system.
 
-## Current state (updated 2026-07-03, task-flow redesign shipped)
+## Current state (updated 2026-07-03, Bloque/Tarea redesign shipped)
 
 Two layers exist side by side:
 
 1. **Local prototype — demo mode, kept (locked decision).** A Spanish, zero-login dashboard
-   backed entirely by `localStorage` (`src/lib/data/`, seeded with dummy data). Lives at
-   `/dashboard`. **Primary views are now Flujo ("Tareas") and Mapa** — calendar and board
-   were demoted to secondary views (grouped under "Más vistas" in the sidebar).
+   backed entirely by `localStorage` (`src/lib/data/`, seeded with dummy data; storage key
+   bumped to `groupy:project:v2`, local identity in `groupy:me:v1`). Lives at `/dashboard`.
+   **Central tabs: Personal, Organización (landing), Mapa** — calendar and board are
+   secondary ("Más vistas" in the sidebar).
 2. **Cloud slice — LIVE end to end.** Create → share code → anonymous join → shared dashboard:
    - **Migrations pushed** (region `eu-west-1`): `20260702101232_schema_foundation.sql` (9 tables,
      full RLS matrix, `app.*` helpers) + `20260702150000_cloud_slice.sql`. The second one:
@@ -69,37 +70,55 @@ Two layers exist side by side:
      (`mirror.ts`), `CloudProjectProvider`. `ProjectProvider` accepts an optional `cloud` binding —
      same reducer + UI in both modes; context exposes `mode` and `joinCode`.
    - **Routes/UI**: `/p/[code]` (server component → not-found / who-are-you / dashboard), homepage
-     join-by-code + "volver a «título»" shortcut, wizard saves to the cloud in `GeneratingScreen`
-     (with a save-locally fallback on error). Topbar shows a copy-link share chip in cloud mode.
+     join-by-code + "volver a «título»" shortcut. The wizard saves at the final click (button busy
+     state, no themed saving screen — `GeneratingScreen` was deleted) then claims the chosen member
+     and pushes their strengths; save-locally fallback on error. Topbar shows a copy-link share chip
+     in cloud mode.
    - **RLS validated behaviorally with dummy data**: 37/37 checks across creator / member /
      stranger / no-session (strangers get only the code preview; identities can't be hijacked).
    - **Anonymous sign-ins are enabled** in the hosted dashboard (prerequisite satisfied).
    - `database.types.ts` is still **hand-authored** (regenerating needs `npx supabase login`, or a
      local Docker daemon for `--db-url`); keep it in sync when migrating.
 
-### Task flow (dependencies + entregas) — shipped 2026-07-03
+### Bloque/Tarea model — shipped 2026-07-03 (replaces the entrega/hito task-flow)
 
-The calendar-first UX was replaced by a **task-flow model** with two SEPARATE dependency kinds
-(engine: `src/lib/data/flow.ts`, pure functions, deliberately easy to edit):
+Tarea ≠ Bloque, everywhere. A **TAREA** (`ProjectModule`) is a small named box, optionally
+typed (`docType`: W/PPT/XLS/PDF/</>/IMG letter chips via `DocTypeBadge`) and sized by
+`importance` (1–10, edited by resizing — the number never shows). A **BLOQUE**
+(`ProjectBlock`, new entity on `Project.blocks`) is a CONTAINER of tasks — never a node,
+never drawn like a task. Every task lives in exactly one block (`blockId`, normalized on
+load). Milestone/objective module types are gone; per-member `strengths` replaced the
+project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mechanisms:
 
-- **Direct deps ("candado")** — `ProjectModule.dependsOn: string[]`; a module is *locked* until
-  every prerequisite is `done`. Cycles are prevented at edit time (`wouldCreateCycle`).
-- **Entregas (deliverable blocks)** — modules of type `milestone` (UI label renamed
-  "Hito" → **"Entrega"**) act as ordered blocks; `ProjectModule.deliverableId` assigns a task to
-  one. Derived rules: a milestone waits for all its assigned tasks; tasks of entrega N wait for
-  entrega N−1 to be marked done.
-- The lock is **enforced softly in the UI only** (editor status options disabled, board drags to
-  in_progress/done ignored); the reducer never forbids a status change.
-- **Views**: `FlowView` ("Tareas", default) — "disponibles ahora" strip + entrega blocks with
-  advance/deliver actions and a member filter (`focusMemberId`, seeded with the claimed member
-  in cloud mode). `MapView` ("Mapa") — per-member coloured task squares (padlock badge tinted
-  with the colour of whoever is *directly* waiting on that task) + measured-SVG mini flowchart
-  (deps left / dependents right, navigable). Calendar/board/overview show lock icons.
-- **KNOWN GAP — cloud sync**: `tasks` has **no `depends_on` / `deliverable_id` columns yet**.
-  `mapping.ts` reads defaults (`[]` / `null`) and does not write them, so flow edits on `/p/[code]`
-  are session-only and lost on reload. Next step: migration adding both columns (+ column grants
-  matching the cloud-slice style), regenerate/hand-update `database.types.ts`, then flip
-  `mapping.ts` + `toRpcPayload` to persist them (`schemas.ts` already accepts the fields).
+- **Candado (task→task)** — `dependsOn`; the ONLY thing rendered as a padlock. Cycles
+  prevented at edit time (`wouldCreateCycle`). `blockingMembers()` drives the short
+  "Diego está bloqueando" notice.
+- **Orden de bloques** — each block is "En orden" (`sequence`) or "Independiente"
+  (`independent`). A sequence block opens when every earlier sequence block is complete
+  (all its tasks done; empty never holds the chain). Drawn as a ↓ connector between
+  containers — never as a padlock.
+- Locks stay **soft** (UI-only guards; the reducer never forbids a status change).
+- **Views** (all drag-first, dnd-kit): `PersonalView` — identity picker (local) or claimed
+  member (cloud); "Disponibles" (open padlock, advance button, sortable) / "Bloqueadas"
+  (closed padlock + who/what blocks). `OrganizationView` (landing) — "Sin asignar" strip +
+  one tinted column per member; drag to assign (single-owner), corner-handle resize =
+  importance. `MapView` — one flowchart per block: containers reorder by grip, tasks drag
+  between containers, deps are measured-SVG arrows created by dragging node ports (own
+  tasks only when an identity exists) and removed via click-on-edge ×; cross-block deps
+  render as chips on the node.
+- **Wizard** (6 steps): título+objetivos → equipo → plazo → ¿quién eres? → tus fortalezas →
+  tareas. Continue button carries a ↵ icon (no "o pulsa Enter" copy). Cloud save happens at
+  the final click behind the button (create → claim → strengths → `/p/[code]`), landing on
+  Organización. `WhoAreYouScreen` gained the personal-strengths step after claiming.
+- **Cloud persistence of the new model** (no migration needed yet): a block is stored as a
+  `tasks` row of `type='milestone'` (title = name, `sort_order` = order, **mode encoded in
+  `description`**); `groups.strengths` jsonb now holds `{ [memberId]: string[] }` (legacy
+  array tolerated on read; `setCloudMemberStrengths` merges server-side).
+- **KNOWN GAP — cloud sync**: `tasks` still has **no `block_id` / `depends_on` /
+  `importance` / `doc_type` columns**. Cloud reads default them (every task lands in the
+  first block) and edits to them are session-only. Next step: migration adding the four
+  columns (+ grants in the cloud-slice style), regenerate/hand-update `database.types.ts`,
+  then flip `mapping.ts` readers/writers (`schemas.ts` already accepts the fields).
 
 ## Scope
 

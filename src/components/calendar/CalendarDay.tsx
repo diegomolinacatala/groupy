@@ -3,7 +3,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { Plus } from "lucide-react";
 import { ModuleChip } from "./ModuleChip";
-import type { ProjectModule } from "@/lib/data/types";
+import type { ProjectModule, TeamMember } from "@/lib/data/types";
 import { cn } from "@/lib/utils/cn";
 
 interface CalendarDayProps {
@@ -12,6 +12,7 @@ interface CalendarDayProps {
   inMonth: boolean;
   isToday: boolean;
   modules: ProjectModule[];
+  members: TeamMember[];
   lockedIds: Set<string>;
   onOpenModule: (id: string) => void;
   onQuickAdd: (iso: string) => void;
@@ -23,6 +24,7 @@ export function CalendarDay({
   inMonth,
   isToday,
   modules,
+  members,
   lockedIds,
   onOpenModule,
   onQuickAdd,
@@ -57,7 +59,7 @@ export function CalendarDay({
         <button
           type="button"
           onClick={() => onQuickAdd(iso)}
-          aria-label="Añadir módulo este día"
+          aria-label="Añadir tarea este día"
           className="grid h-5 w-5 place-items-center rounded-md text-muted opacity-0 transition-opacity hover:bg-surface-3 hover:text-ink group-hover/day:opacity-100"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -69,6 +71,7 @@ export function CalendarDay({
           <ModuleChip
             key={module.id}
             module={module}
+            members={members}
             locked={lockedIds.has(module.id)}
             onOpen={() => onOpenModule(module.id)}
           />

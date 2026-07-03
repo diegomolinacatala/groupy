@@ -127,6 +127,7 @@ export function CalendarView() {
 
         <UnscheduledTray
           modules={unscheduled}
+          members={project.members}
           lockedIds={lockedIds}
           onOpenModule={openModule}
         />
@@ -153,6 +154,7 @@ export function CalendarView() {
                   inMonth={date.getMonth() === month}
                   isToday={iso === today}
                   modules={byDate.get(iso) ?? []}
+                  members={project.members}
                   lockedIds={lockedIds}
                   onOpenModule={openModule}
                   onQuickAdd={handleQuickAdd}
@@ -168,6 +170,7 @@ export function CalendarView() {
           <div className="w-44 cursor-grabbing">
             <ModuleChipStatic
               module={activeModule}
+              members={project.members}
               locked={lockedIds.has(activeModule.id)}
             />
           </div>

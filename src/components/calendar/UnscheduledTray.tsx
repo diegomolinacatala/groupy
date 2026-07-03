@@ -3,18 +3,20 @@
 import { useDroppable } from "@dnd-kit/core";
 import { Inbox } from "lucide-react";
 import { ModuleChip } from "./ModuleChip";
-import type { ProjectModule } from "@/lib/data/types";
+import type { ProjectModule, TeamMember } from "@/lib/data/types";
 import { cn } from "@/lib/utils/cn";
 
 interface UnscheduledTrayProps {
   modules: ProjectModule[];
+  members: TeamMember[];
   lockedIds: Set<string>;
   onOpenModule: (id: string) => void;
 }
 
-/** Home for date-less modules; also the drop zone to "unschedule" a module. */
+/** Home for date-less tasks; also the drop zone to "unschedule" a task. */
 export function UnscheduledTray({
   modules,
+  members,
   lockedIds,
   onOpenModule,
 }: UnscheduledTrayProps) {
@@ -37,7 +39,7 @@ export function UnscheduledTray({
       </span>
       {modules.length === 0 ? (
         <span className="py-1.5 text-xs text-muted-2">
-          Arrastra un módulo aquí para quitarle la fecha.
+          Suelta aquí para quitar la fecha.
         </span>
       ) : (
         <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
@@ -45,6 +47,7 @@ export function UnscheduledTray({
             <div key={module.id} className="w-44 max-w-full">
               <ModuleChip
                 module={module}
+                members={members}
                 locked={lockedIds.has(module.id)}
                 onOpen={() => onOpenModule(module.id)}
               />

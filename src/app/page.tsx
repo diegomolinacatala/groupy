@@ -20,18 +20,18 @@ function subscribeToStorage(onChange: () => void): () => void {
 const FEATURES = [
   {
     number: "01",
-    title: "Tres preguntas",
-    body: "El equipo, las fechas y poco más: en un minuto hay plan.",
+    title: "Cero fricción",
+    body: "Título, equipo, tareas. Sin cuentas: el grupo entra con un código.",
   },
   {
     number: "02",
-    title: "Un plan repartido",
-    body: "Fases con fecha en el calendario y tareas asignadas a cada miembro desde el primer día.",
+    title: "Todo se arrastra",
+    body: "Tareas a personas, tareas entre bloques, dependencias en el mapa.",
   },
   {
     number: "03",
-    title: "Progreso registrado",
-    body: "Tareas, estados y revisiones: quién hizo qué deja de ser una discusión.",
+    title: "Quién hace qué",
+    body: "Bloqueos visibles y registro continuo del trabajo de cada uno.",
   },
 ];
 
@@ -71,12 +71,11 @@ export default function Home() {
         <section className="mx-auto w-full max-w-3xl px-6 pb-20 pt-[10vh] text-center md:pt-[14vh]">
           <p className="type-overline mb-6">Trabajo en grupo, sin fricción</p>
           <h1 className="type-display mx-auto max-w-2xl text-5xl leading-[1.05] text-ink md:text-6xl">
-            Nosotros repartimos el trabajo. Vosotros lo termináis.
+            El trabajo en grupo, repartido y a la vista.
           </h1>
           <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-muted md:text-lg">
-            Responde tres preguntas y Groupy convierte el encargo en un plan
-            con fechas y tareas asignadas — y en un registro continuo de quién
-            hace qué.
+            Un tablero compartido por código: tareas que se arrastran a cada
+            persona, bloques con orden y un mapa de dependencias.
           </p>
 
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -84,7 +83,7 @@ export default function Home() {
               href={hasProject ? "/dashboard" : "/setup"}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-ink px-7 text-[15px] font-medium text-canvas transition-colors hover:bg-ink-hover"
             >
-              {hasProject ? "Continuar con vuestro proyecto" : "Crear nuestro plan"}
+              {hasProject ? "Continuar con vuestro proyecto" : "Crear proyecto"}
               <ArrowRight className="h-4 w-4" />
             </Link>
             {hasProject && (

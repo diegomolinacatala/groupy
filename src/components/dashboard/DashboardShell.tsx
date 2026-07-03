@@ -5,9 +5,9 @@ import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { LoadingScreen } from "@/components/ui/LoadingScreen";
-import { FlowView } from "@/components/flow/FlowView";
+import { PersonalView } from "@/components/personal/PersonalView";
+import { OrganizationView } from "@/components/organization/OrganizationView";
 import { MapView } from "@/components/map/MapView";
-import { OverviewView } from "@/components/overview/OverviewView";
 import { CalendarView } from "@/components/calendar/CalendarView";
 import { BoardView } from "@/components/board/BoardView";
 import { TeamView } from "@/components/team/TeamView";
@@ -26,9 +26,9 @@ export function DashboardShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
         <main className="min-h-0 flex-1 overflow-y-auto">
-          {view === "flow" && <FlowView />}
+          {view === "personal" && <PersonalView />}
+          {view === "organization" && <OrganizationView />}
           {view === "map" && <MapView />}
-          {view === "overview" && <OverviewView />}
           {view === "calendar" && <CalendarView />}
           {view === "board" && <BoardView />}
           {view === "team" && <TeamView />}

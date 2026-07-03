@@ -3,9 +3,9 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
 export type DashboardView =
-  | "flow"
+  | "personal"
+  | "organization"
   | "map"
-  | "overview"
   | "calendar"
   | "board"
   | "team"
@@ -40,7 +40,8 @@ export function DashboardUiProvider({
   /** Cloud dashboards pass the claimed member so the flow opens "as you". */
   initialFocusMemberId?: string | null;
 }) {
-  const [view, setView] = useState<DashboardView>("flow");
+  // Organización is the landing tab — the wizard drops you here.
+  const [view, setView] = useState<DashboardView>("organization");
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [focusMemberId, setFocusMemberId] = useState<string | null>(
     initialFocusMemberId,

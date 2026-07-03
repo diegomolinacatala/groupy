@@ -75,7 +75,7 @@ export function BoardColumn({
             onClick={() => onAdd(status)}
             className="rounded-xl border border-dashed border-line-strong px-3 py-6 text-center text-xs text-muted transition-colors hover:border-accent hover:text-accent"
           >
-            Sin módulos
+            Sin tareas
           </button>
         )}
       </div>

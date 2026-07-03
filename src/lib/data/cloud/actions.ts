@@ -1,20 +1,21 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import type { TablesUpdate } from "@/lib/supabase/database.types";
+import type { Json, TablesUpdate } from "@/lib/supabase/database.types";
 import {
   claimInputSchema,
   createProjectInputSchema,
   deleteMemberInputSchema,
   deleteTaskInputSchema,
   memberInputSchema,
+  memberStrengthsInputSchema,
   rpcClaimResultSchema,
   rpcCreateResultSchema,
-  strengthsInputSchema,
   updateProjectInputSchema,
+  upsertBlockInputSchema,
   upsertTaskInputSchema,
 } from "./schemas";
-import { moduleToTaskRow, toRpcPayload } from "./mapping";
+import { blockToTaskRow, moduleToTaskRow, toRpcPayload } from "./mapping";
 
 // Server Functions for the cloud slice. Expected failures are RETURN VALUES
 // ({ ok: false, error }), never throws — the mirror logs them and the local
@@ -152,17 +153,50 @@ export async function updateCloudProject(
   return { ok: true };
 }
 
-export async function setCloudStrengths(
+/**
+ * Writes one member's strengths into the group's jsonb record
+ * ({ [memberId]: string[] }). Read-modify-write: concurrent writers of
+ * DIFFERENT members can race in theory; last write wins on the record —
+ * acceptable at prototype scale.
+ */
+export async function setCloudMemberStrengths(
   input: unknown,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const parsed = strengthsInputSchema.safeParse(input);
+  const parsed = memberStrengthsInputSchema.safeParse(input);
   if (!parsed.success) return INVALID_INPUT;
 
   const supabase = await createClient();
+  const { memberId, strengths } = parsed.data;
+
+  // RLS scopes both reads to the caller's own group.
+  const memberRes = await supabase
+    .from("group_members")
+    .select("group_id")
+    .eq("id", memberId)
+    .single();
+  if (memberRes.error) {
+    return { ok: false, error: "Sin permiso para editar este miembro." };
+  }
+  const groupId = memberRes.data.group_id;
+
+  const groupRes = await supabase
+    .from("groups")
+    .select("strengths")
+    .eq("id", groupId)
+    .single();
+  if (groupRes.error) return { ok: false, error: groupRes.error.message };
+
+  const current = groupRes.data.strengths;
+  const record: { [key: string]: Json | undefined } =
+    current && typeof current === "object" && !Array.isArray(current)
+      ? { ...current }
+      : {}; // legacy array shape → start the record fresh
+  record[memberId] = strengths;
+
   const { data, error } = await supabase
     .from("groups")
-    .update({ strengths: parsed.data.strengths })
-    .eq("id", parsed.data.groupId)
+    .update({ strengths: record })
+    .eq("id", groupId)
     .select("id");
   if (error) return { ok: false, error: error.message };
   if (!data?.length) {
@@ -185,6 +219,25 @@ export async function upsertCloudTask(
   if (error) return { ok: false, error: error.message };
   if (!data?.length) {
     return { ok: false, error: "Sin permiso para editar esta tarea." };
+  }
+  return { ok: true };
+}
+
+/** Blocks are stored as milestone `tasks` rows — see mapping.ts. */
+export async function upsertCloudBlock(
+  input: unknown,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = upsertBlockInputSchema.safeParse(input);
+  if (!parsed.success) return INVALID_INPUT;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("tasks")
+    .upsert(blockToTaskRow(parsed.data.groupId, parsed.data.block))
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!data?.length) {
+    return { ok: false, error: "Sin permiso para editar este bloque." };
   }
   return { ok: true };
 }

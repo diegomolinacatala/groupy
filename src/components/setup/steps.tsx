@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Check, X } from "lucide-react";
 import type { SetupAnswers } from "@/lib/data/plan";
 import { cn } from "@/lib/utils/cn";
 import { addDaysISO, addMonthsISO, daysBetweenISO } from "@/lib/utils/dates";
 
-// The three wizard questions. Each step renders a heading and one input;
+// The six wizard questions. Each step renders a heading and one input;
 // navigation and the continue button live in SetupWizard.
 
 interface StepProps {
@@ -52,36 +52,76 @@ const chipClass = (active: boolean) =>
       : "border-line bg-surface text-ink-2 hover:border-line-strong",
   );
 
-export function StepTeam({ answers, patch, onNext }: StepProps) {
+export function StepProject({ answers, patch, onNext }: StepProps) {
+  return (
+    <div>
+      <WizardHeading overline="El proyecto" question="¿Qué vais a hacer?" />
+
+      <input
+        autoFocus
+        value={answers.title}
+        onChange={(e) => patch({ title: e.target.value })}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          if (answers.title.trim()) onNext();
+        }}
+        placeholder="Título del trabajo"
+        aria-label="Título del proyecto"
+        className={inputClass}
+      />
+
+      <label className="mt-4 block">
+        <span className="mb-1.5 block text-xs font-medium text-muted">
+          Objetivos
+        </span>
+        <textarea
+          value={answers.description}
+          onChange={(e) => patch({ description: e.target.value })}
+          rows={3}
+          placeholder="Opcional"
+          aria-label="Objetivos"
+          className="w-full resize-none rounded-xl border border-line bg-surface px-4 py-3 text-[15px] leading-relaxed text-ink outline-none transition-colors placeholder:text-muted-2 focus:border-ink"
+        />
+      </label>
+    </div>
+  );
+}
+
+/**
+ * Shared quick-entry list (team, tasks): type, Enter, type, Enter. Enter on
+ * an empty input advances the step.
+ */
+function QuickList({
+  items,
+  placeholder,
+  inputLabel,
+  removeLabel,
+  onAdd,
+  onRemoveAt,
+  onNext,
+  trailing,
+}: {
+  items: string[];
+  placeholder: string;
+  inputLabel: string;
+  removeLabel: (item: string) => string;
+  onAdd: (value: string) => void;
+  onRemoveAt: (index: number) => void;
+  onNext: () => void;
+  trailing?: (index: number) => ReactNode;
+}) {
   const [draft, setDraft] = useState("");
-  const names = answers.memberNames;
 
   const add = () => {
-    const name = draft.trim();
-    if (!name) return;
-    patch((prev) => ({
-      memberNames: prev.memberNames.some(
-        (n) => n.toLowerCase() === name.toLowerCase(),
-      )
-        ? prev.memberNames
-        : [...prev.memberNames, name],
-    }));
+    const value = draft.trim();
+    if (!value) return;
+    onAdd(value);
     setDraft("");
   };
 
-  const removeAt = (index: number) =>
-    patch((prev) => ({
-      memberNames: prev.memberNames.filter((_, i) => i !== index),
-    }));
-
   return (
     <div>
-      <WizardHeading
-        overline="El equipo"
-        question="¿Quiénes sois?"
-        helper="Al menos dos. La primera persona coordina."
-      />
-
       <div className="flex gap-2">
         <input
           autoFocus
@@ -93,8 +133,8 @@ export function StepTeam({ answers, patch, onNext }: StepProps) {
             if (draft.trim()) add();
             else onNext();
           }}
-          placeholder={names.length === 0 ? "Tu nombre" : "Siguiente persona"}
-          aria-label="Nombre del miembro"
+          placeholder={placeholder}
+          aria-label={inputLabel}
           className={inputClass}
         />
         <button
@@ -107,23 +147,21 @@ export function StepTeam({ answers, patch, onNext }: StepProps) {
         </button>
       </div>
 
-      {names.length > 0 && (
+      {items.length > 0 && (
         <ul className="animate-rise-delayed mt-6 divide-y divide-line border-y border-line">
-          {names.map((name, index) => (
-            <li key={name} className="flex items-center gap-4 py-3">
+          {items.map((item, index) => (
+            <li key={item} className="flex items-center gap-4 py-3">
               <span className="w-6 text-sm tabular-nums text-muted-2">
                 {String(index + 1).padStart(2, "0")}
               </span>
               <span className="flex-1 text-[15px] font-medium text-ink">
-                {name}
+                {item}
               </span>
-              {index === 0 && (
-                <span className="type-overline !text-accent">Coordina</span>
-              )}
+              {trailing?.(index)}
               <button
                 type="button"
-                onClick={() => removeAt(index)}
-                aria-label={`Quitar a ${name}`}
+                onClick={() => onRemoveAt(index)}
+                aria-label={removeLabel(item)}
                 className="grid h-7 w-7 place-items-center rounded-full text-muted transition-colors hover:bg-danger-soft hover:text-danger"
               >
                 <X className="h-4 w-4" />
@@ -132,6 +170,54 @@ export function StepTeam({ answers, patch, onNext }: StepProps) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+export function StepTeam({ answers, patch, onNext }: StepProps) {
+  return (
+    <div>
+      <WizardHeading
+        overline="El equipo"
+        question="¿Quiénes sois?"
+        helper="Al menos dos. La primera persona coordina."
+      />
+
+      <QuickList
+        items={answers.memberNames}
+        placeholder={
+          answers.memberNames.length === 0 ? "Tu nombre" : "Siguiente persona"
+        }
+        inputLabel="Nombre del miembro"
+        removeLabel={(name) => `Quitar a ${name}`}
+        onAdd={(name) =>
+          patch((prev) => ({
+            memberNames: prev.memberNames.some(
+              (n) => n.toLowerCase() === name.toLowerCase(),
+            )
+              ? prev.memberNames
+              : [...prev.memberNames, name],
+          }))
+        }
+        onRemoveAt={(index) =>
+          patch((prev) => {
+            const memberNames = prev.memberNames.filter((_, i) => i !== index);
+            // Keep the "¿quién eres?" pick pointing at the same person.
+            let selfIndex = prev.selfIndex;
+            if (selfIndex !== null) {
+              if (selfIndex === index) selfIndex = null;
+              else if (selfIndex > index) selfIndex -= 1;
+            }
+            return { memberNames, selfIndex };
+          })
+        }
+        onNext={onNext}
+        trailing={(index) =>
+          index === 0 ? (
+            <span className="type-overline !text-accent">Coordina</span>
+          ) : null
+        }
+      />
     </div>
   );
 }
@@ -220,6 +306,72 @@ export function StepDates({ answers, patch, onNext }: StepProps) {
   );
 }
 
+export function StepWho({ answers, patch, onNext }: StepProps) {
+  const selfIndex = answers.selfIndex;
+
+  // Enter with focus outside the list (e.g. right after the step mounts)
+  // advances once someone is picked; a focused button handles its own Enter.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" || selfIndex === null) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("button")) return;
+      event.preventDefault();
+      onNext();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selfIndex, onNext]);
+
+  return (
+    <div>
+      <WizardHeading overline="Tú" question="¿Quién eres?" />
+
+      <ul className="divide-y divide-line border-y border-line">
+        {answers.memberNames.map((name, index) => {
+          const selected = selfIndex === index;
+          return (
+            <li key={name}>
+              <button
+                type="button"
+                aria-pressed={selected}
+                onClick={() => patch({ selfIndex: index })}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || !selected) return;
+                  e.preventDefault();
+                  onNext();
+                }}
+                className={cn(
+                  "flex w-full items-center gap-4 rounded-lg px-2 py-3 text-left transition-colors",
+                  selected ? "bg-surface-2" : "hover:bg-surface-2/60",
+                )}
+              >
+                <span className="w-6 text-sm tabular-nums text-muted-2">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span
+                  className={cn(
+                    "flex-1 text-[15px] font-medium",
+                    selected ? "text-ink" : "text-ink-2",
+                  )}
+                >
+                  {name}
+                </span>
+                {selected && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="type-overline !text-accent">Tú</span>
+                    <Check className="h-4 w-4 text-accent" />
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 const STRENGTH_SUGGESTIONS = [
   "Redacción",
   "Diseño",
@@ -229,39 +381,45 @@ const STRENGTH_SUGGESTIONS = [
   "Programación",
 ];
 
-export function StepStrengths({ answers, patch, onNext }: StepProps) {
+/**
+ * Suggestion chips + free input. Shared by the wizard and the who-are-you
+ * screen. `onChange` takes an updater so rapid toggles never read stale state;
+ * `onSubmit` fires on Enter over an empty input.
+ */
+export function StrengthsPicker({
+  value,
+  onChange,
+  onSubmit,
+}: {
+  value: string[];
+  onChange: (updater: (prev: string[]) => string[]) => void;
+  onSubmit: () => void;
+}) {
   const [draft, setDraft] = useState("");
-  const strengths = answers.strengths;
 
-  const toggle = (value: string) =>
-    patch((prev) => ({
-      strengths: prev.strengths.includes(value)
-        ? prev.strengths.filter((s) => s !== value)
-        : [...prev.strengths, value],
-    }));
+  const toggle = (item: string) =>
+    onChange((prev) =>
+      prev.includes(item) ? prev.filter((s) => s !== item) : [...prev, item],
+    );
 
   const addDraft = () => {
-    const value = draft.trim();
-    if (!value) return;
-    patch((prev) => ({
-      strengths: prev.strengths.includes(value)
-        ? prev.strengths
-        : [...prev.strengths, value],
-    }));
+    const item = draft.trim();
+    if (!item) return;
+    onChange((prev) => (prev.includes(item) ? prev : [...prev, item]));
     setDraft("");
   };
 
+  const custom = value.filter((s) => !STRENGTH_SUGGESTIONS.includes(s));
+
   return (
     <div>
-      <WizardHeading overline="Opcional" question="¿En qué destacáis?" />
-
       <div className="mb-5 flex flex-wrap gap-2">
         {STRENGTH_SUGGESTIONS.map((suggestion) => (
           <button
             key={suggestion}
             type="button"
             onClick={() => toggle(suggestion)}
-            className={chipClass(strengths.includes(suggestion))}
+            className={chipClass(value.includes(suggestion))}
           >
             {suggestion}
           </button>
@@ -269,42 +427,92 @@ export function StepStrengths({ answers, patch, onNext }: StepProps) {
       </div>
 
       <input
+        autoFocus
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
           if (e.key !== "Enter") return;
           e.preventDefault();
           if (draft.trim()) addDraft();
-          else onNext();
+          else onSubmit();
         }}
         placeholder="Otra fortaleza…"
         aria-label="Añadir fortaleza"
         className={inputClass}
       />
 
-      {strengths.filter((s) => !STRENGTH_SUGGESTIONS.includes(s)).length >
-        0 && (
+      {custom.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2">
-          {strengths
-            .filter((s) => !STRENGTH_SUGGESTIONS.includes(s))
-            .map((strength) => (
-              <span
-                key={strength}
-                className="inline-flex items-center gap-1.5 rounded-full bg-ink py-1.5 pl-4 pr-2 text-sm font-medium text-canvas"
+          {custom.map((strength) => (
+            <span
+              key={strength}
+              className="inline-flex items-center gap-1.5 rounded-full bg-ink py-1.5 pl-4 pr-2 text-sm font-medium text-canvas"
+            >
+              {strength}
+              <button
+                type="button"
+                onClick={() => toggle(strength)}
+                aria-label={`Quitar ${strength}`}
+                className="grid h-5 w-5 place-items-center rounded-full transition-colors hover:bg-ink-hover"
               >
-                {strength}
-                <button
-                  type="button"
-                  onClick={() => toggle(strength)}
-                  aria-label={`Quitar ${strength}`}
-                  className="grid h-5 w-5 place-items-center rounded-full transition-colors hover:bg-ink-hover"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </span>
-            ))}
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          ))}
         </div>
       )}
+    </div>
+  );
+}
+
+export function StepStrengths({ answers, patch, onNext }: StepProps) {
+  return (
+    <div>
+      <WizardHeading overline="Tus fortalezas" question="¿En qué destacas?" />
+
+      <StrengthsPicker
+        value={answers.selfStrengths}
+        onChange={(updater) =>
+          patch((prev) => ({ selfStrengths: updater(prev.selfStrengths) }))
+        }
+        onSubmit={onNext}
+      />
+    </div>
+  );
+}
+
+export function StepTasks({ answers, patch, onNext }: StepProps) {
+  return (
+    <div>
+      <WizardHeading
+        overline="Las tareas"
+        question="¿Qué hay que hacer?"
+        helper="Al menos una. Luego se reparten arrastrando."
+      />
+
+      <QuickList
+        items={answers.taskNames}
+        placeholder={
+          answers.taskNames.length === 0 ? "Primera tarea" : "Siguiente tarea"
+        }
+        inputLabel="Nombre de la tarea"
+        removeLabel={(task) => `Quitar ${task}`}
+        onAdd={(task) =>
+          patch((prev) => ({
+            taskNames: prev.taskNames.some(
+              (t) => t.toLowerCase() === task.toLowerCase(),
+            )
+              ? prev.taskNames
+              : [...prev.taskNames, task],
+          }))
+        }
+        onRemoveAt={(index) =>
+          patch((prev) => ({
+            taskNames: prev.taskNames.filter((_, i) => i !== index),
+          }))
+        }
+        onNext={onNext}
+      />
     </div>
   );
 }

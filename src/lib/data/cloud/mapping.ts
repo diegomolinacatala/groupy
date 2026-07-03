@@ -2,14 +2,27 @@ import type { Json, Tables, TablesInsert } from "@/lib/supabase/database.types";
 import type {
   ChecklistItem,
   Project,
+  ProjectBlock,
   ProjectModule,
   TeamMember,
 } from "../types";
+import { IMPORTANCE_DEFAULT } from "../types";
 import type { CreateProjectInput } from "./schemas";
 
 // Pure translation between the normalized DB rows and the prototype's flat
 // Project (one project = one implicit group). Safe to import from server and
 // client code — no I/O here.
+//
+// Blocks piggyback on the existing schema: a BLOQUE is stored as a `tasks`
+// row of type "milestone" (title = name, sort_order = order, description =
+// mode). No new columns needed, and the create RPC passes them through.
+//
+// KNOWN GAP (extends the pre-redesign one): `tasks` has no columns for
+// `block_id` / `depends_on` / `importance` / `doc_type` yet. Cloud projects
+// read defaults for those (every task lands in the first block) and edits to
+// them are NOT mirrored — local/session state only. Next step: a migration
+// adding the four columns (+ grants in the cloud-slice style), regenerate
+// `database.types.ts`, then flip the readers/writers below.
 
 /** timestamptz / date column → the prototype's "yyyy-mm-dd" (null-safe). */
 function toIsoDate(value: string | null): string | null {
@@ -35,9 +48,19 @@ function jsonToChecklist(json: Json): ChecklistItem[] {
   return items;
 }
 
-function jsonToStrengths(json: Json): string[] {
-  if (!Array.isArray(json)) return [];
-  return json.filter((s): s is string => typeof s === "string");
+/**
+ * `groups.strengths` holds a per-member record { [memberId]: string[] }.
+ * Legacy rows hold the old flat array — read as "nobody declared yet".
+ */
+function jsonToMemberStrengths(json: Json): Record<string, string[]> {
+  if (!json || typeof json !== "object" || Array.isArray(json)) return {};
+  const record: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(json)) {
+    if (Array.isArray(value)) {
+      record[key] = value.filter((s): s is string => typeof s === "string");
+    }
+  }
+  return record;
 }
 
 export function taskRowToModule(row: Tables<"tasks">): ProjectModule {
@@ -45,23 +68,34 @@ export function taskRowToModule(row: Tables<"tasks">): ProjectModule {
     id: row.id,
     title: row.title,
     description: row.description,
-    type: row.type,
     status: row.status,
     dueDate: toIsoDate(row.due_date),
     assigneeIds: row.assignees,
     checklist: jsonToChecklist(row.checklist),
-    // KNOWN GAP: the flow fields have no DB columns yet (pending migration:
-    // depends_on uuid[] + deliverable_id uuid on tasks). Until it lands and
-    // database.types.ts is regenerated, cloud projects read empty flow data
-    // and edits to it are NOT mirrored — local/session state only.
+    // KNOWN GAP fields — see the header note.
     dependsOn: [],
-    deliverableId: null,
+    blockId: null,
+    importance: IMPORTANCE_DEFAULT,
+    docType: null,
     order: row.sort_order,
     createdAt: row.created_at,
   };
 }
 
-export function memberRowToTeamMember(row: Tables<"group_members">): TeamMember {
+/** A milestone row is a stored BLOQUE (see the header note). */
+export function taskRowToBlock(row: Tables<"tasks">): ProjectBlock {
+  return {
+    id: row.id,
+    name: row.title,
+    mode: row.description === "independent" ? "independent" : "sequence",
+    order: row.sort_order,
+  };
+}
+
+export function memberRowToTeamMember(
+  row: Tables<"group_members">,
+  strengths: Record<string, string[]>,
+): TeamMember {
   return {
     id: row.id,
     name: row.display_name,
@@ -69,6 +103,7 @@ export function memberRowToTeamMember(row: Tables<"group_members">): TeamMember 
     role: row.role,
     colorKey: row.color_key,
     isCoordinator: row.is_coordinator,
+    strengths: strengths[row.id] ?? [],
   };
 }
 
@@ -78,6 +113,26 @@ export function rowsToProject(
   members: Tables<"group_members">[],
   tasks: Tables<"tasks">[],
 ): Project {
+  const sorted = [...tasks].sort(
+    (a, b) =>
+      a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at),
+  );
+  const blocks = sorted
+    .filter((t) => t.type === "milestone")
+    .map(taskRowToBlock);
+  // Projects saved before the block redesign have no block rows; give them a
+  // starting block so the "exactly one block" invariant holds client-side.
+  if (blocks.length === 0) {
+    blocks.push({
+      id: crypto.randomUUID(),
+      name: "General",
+      mode: "independent",
+      order: 0,
+    });
+  }
+  const firstBlockId = blocks[0].id;
+  const strengths = jsonToMemberStrengths(group.strengths);
+
   return {
     id: project.id,
     title: project.title,
@@ -85,15 +140,11 @@ export function rowsToProject(
     startDate: toIsoDate(project.start_date),
     dueDate: toIsoDate(project.due_at),
     status: project.status,
-    strengths: jsonToStrengths(group.strengths),
-    members: members.map(memberRowToTeamMember),
-    modules: [...tasks]
-      .sort(
-        (a, b) =>
-          a.sort_order - b.sort_order ||
-          a.created_at.localeCompare(b.created_at),
-      )
-      .map(taskRowToModule),
+    blocks,
+    members: members.map((m) => memberRowToTeamMember(m, strengths)),
+    modules: sorted
+      .filter((t) => t.type !== "milestone")
+      .map((t) => ({ ...taskRowToModule(t), blockId: firstBlockId })),
     // Write-only in the UI (nothing reads it back); refreshed by the reducer.
     updatedAt: new Date().toISOString(),
   };
@@ -108,7 +159,7 @@ export function moduleToTaskRow(
     group_id: groupId,
     title: module.title,
     description: module.description,
-    type: module.type,
+    type: "task",
     status: module.status,
     due_date: module.dueDate,
     sort_order: module.order,
@@ -121,7 +172,25 @@ export function moduleToTaskRow(
     created_at: module.createdAt,
     // done_at is deliberately absent: a DB trigger stamps/clears it on status
     // transitions so clients can't forge completion times.
-    // dependsOn / deliverableId are absent too — see taskRowToModule.
+    // dependsOn / blockId / importance / docType are absent — KNOWN GAP.
+  };
+}
+
+export function blockToTaskRow(
+  groupId: string,
+  block: ProjectBlock,
+): TablesInsert<"tasks"> {
+  return {
+    id: block.id,
+    group_id: groupId,
+    title: block.name,
+    description: block.mode,
+    type: "milestone",
+    status: "todo",
+    due_date: null,
+    sort_order: block.order,
+    checklist: [],
+    assignees: [],
   };
 }
 
@@ -132,8 +201,8 @@ export function projectToCreateInput(project: Project): CreateProjectInput {
     description: project.description,
     startDate: project.startDate,
     dueDate: project.dueDate,
-    strengths: project.strengths,
     members: project.members,
+    blocks: project.blocks,
     modules: project.modules,
   };
 }
@@ -145,7 +214,9 @@ export function toRpcPayload(input: CreateProjectInput): Json {
     description: input.description,
     start_date: input.startDate,
     due_date: input.dueDate,
-    strengths: input.strengths,
+    // The RPC only accepts the legacy array shape here; per-member strengths
+    // are written post-claim through setCloudMemberStrengths.
+    strengths: [],
     members: input.members.map((m) => ({
       id: m.id,
       name: m.name,
@@ -154,20 +225,33 @@ export function toRpcPayload(input: CreateProjectInput): Json {
       color_key: m.colorKey,
       is_coordinator: m.isCoordinator,
     })),
-    modules: input.modules.map((m) => ({
-      id: m.id,
-      title: m.title,
-      description: m.description,
-      type: m.type,
-      status: m.status,
-      due_date: m.dueDate,
-      sort_order: m.order,
-      checklist: m.checklist.map((c) => ({
-        id: c.id,
-        text: c.text,
-        done: c.done,
+    modules: [
+      ...input.blocks.map((b) => ({
+        id: b.id,
+        title: b.name,
+        description: b.mode,
+        type: "milestone",
+        status: "todo",
+        due_date: null,
+        sort_order: b.order,
+        checklist: [],
+        assignees: [],
       })),
-      assignees: m.assigneeIds,
-    })),
+      ...input.modules.map((m) => ({
+        id: m.id,
+        title: m.title,
+        description: m.description,
+        type: "task",
+        status: m.status,
+        due_date: m.dueDate,
+        sort_order: m.order,
+        checklist: m.checklist.map((c) => ({
+          id: c.id,
+          text: c.text,
+          done: c.done,
+        })),
+        assignees: m.assigneeIds,
+      })),
+    ],
   };
 }

@@ -5,19 +5,29 @@ import {
   useContext,
   useEffect,
   useReducer,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import type {
   ChecklistItem,
   ModuleStatus,
-  ModuleType,
   Project,
+  ProjectBlock,
   ProjectModule,
+  TaskDocType,
   TeamMember,
 } from "./types";
+import { clampImportance, IMPORTANCE_DEFAULT } from "./types";
 import { projectReducer } from "./reducer";
-import { loadProject, saveProject, resetProject } from "./store";
-import { wouldCreateCycle } from "./flow";
+import {
+  loadLocalIdentity,
+  loadProject,
+  resetProject,
+  saveLocalIdentity,
+  saveProject,
+  subscribeLocalIdentity,
+} from "./store";
+import { orderedBlocks, wouldCreateCycle } from "./flow";
 import { nextMemberColorKey } from "@/lib/utils/colors";
 
 const PLACEHOLDER: Project = {
@@ -27,7 +37,7 @@ const PLACEHOLDER: Project = {
   startDate: null,
   dueDate: null,
   status: "active",
-  strengths: [],
+  blocks: [],
   members: [],
   modules: [],
   updatedAt: "",
@@ -35,10 +45,12 @@ const PLACEHOLDER: Project = {
 
 export interface NewModuleInput {
   title?: string;
-  type?: ModuleType;
   dueDate?: string | null;
-  /** Pre-assign the new module to an entrega (used by the flow view). */
-  deliverableId?: string | null;
+  /** Pre-assign the new task to a block; defaults to the first block. */
+  blockId?: string | null;
+  /** Pre-assign to a member (the per-column "+" in Organización). */
+  assigneeId?: string | null;
+  docType?: TaskDocType | null;
 }
 
 export interface NewMemberInput {
@@ -58,15 +70,17 @@ export type ProjectMetaPatch = Partial<
  */
 export interface ProjectMirror {
   updateProject: (patch: ProjectMetaPatch) => void;
-  setStrengths: (strengths: string[]) => void;
   upsertModule: (module: ProjectModule) => void;
   deleteModule: (id: string) => void;
+  upsertBlock: (block: ProjectBlock) => void;
+  deleteBlock: (id: string) => void;
   addMember: (member: TeamMember) => void;
   updateMember: (member: TeamMember) => void;
   deleteMember: (
     id: string,
     taskPatches: { id: string; assigneeIds: string[] }[],
   ) => void;
+  setMemberStrengths: (memberId: string, strengths: string[]) => void;
 }
 
 export interface CloudBinding {
@@ -80,17 +94,26 @@ export interface CloudBinding {
 
 interface ProjectApi {
   updateProject: (patch: ProjectMetaPatch) => void;
-  setStrengths: (strengths: string[]) => void;
   addModule: (input?: NewModuleInput) => string;
   updateModule: (id: string, patch: Partial<ProjectModule>) => void;
   deleteModule: (id: string) => void;
   moveModuleToDate: (id: string, dueDate: string | null) => void;
   setModuleStatus: (id: string, status: ModuleStatus) => void;
   toggleAssignee: (moduleId: string, memberId: string) => void;
+  /** Single-owner assignment (Organización drag): null clears. */
+  assignToMember: (moduleId: string, memberId: string | null) => void;
   /** Adds/removes a direct dependency; silently refuses cycles. */
   toggleDependency: (moduleId: string, depId: string) => void;
-  /** Assigns the module to an entrega (milestone id) or clears it. */
-  setDeliverable: (moduleId: string, deliverableId: string | null) => void;
+  /** Moves the task to another block. */
+  setModuleBlock: (moduleId: string, blockId: string) => void;
+  setImportance: (moduleId: string, importance: number) => void;
+  /** Rewrites `order` following the given id order (subset allowed). */
+  reorderModules: (orderedIds: string[]) => void;
+  addBlock: (input?: { name?: string; mode?: ProjectBlock["mode"] }) => string;
+  updateBlock: (id: string, patch: Partial<ProjectBlock>) => void;
+  /** Refused while it is the last block; its tasks move to the first one. */
+  deleteBlock: (id: string) => void;
+  reorderBlocks: (orderedIds: string[]) => void;
   addChecklistItem: (moduleId: string, text: string) => void;
   updateChecklistItem: (
     moduleId: string,
@@ -101,6 +124,9 @@ interface ProjectApi {
   addMember: (input?: NewMemberInput) => string;
   updateMember: (id: string, patch: Partial<TeamMember>) => void;
   deleteMember: (id: string) => void;
+  setMemberStrengths: (memberId: string, strengths: string[]) => void;
+  /** Local mode only: picks "quién soy" on this device; cloud is fixed. */
+  setCurrentMember: (memberId: string | null) => void;
   reset: () => void;
 }
 
@@ -110,7 +136,7 @@ interface ProjectContextValue extends ProjectApi {
   /** "local" = localStorage demo, "cloud" = Supabase-backed shared project. */
   mode: "local" | "cloud";
   joinCode: string | null;
-  /** Member claimed by this session (cloud mode); null in the local demo. */
+  /** Member this session acts as (claimed in cloud, picked in local). */
   currentMemberId: string | null;
 }
 
@@ -133,6 +159,14 @@ export function ProjectProvider({
   const isCloud = cloud !== undefined;
   const mirror = cloud?.mirror ?? null;
 
+  // Local identity is device state, not project state — read through an
+  // external store so SSR markup never depends on localStorage.
+  const localMemberId = useSyncExternalStore(
+    subscribeLocalIdentity,
+    loadLocalIdentity,
+    () => null,
+  );
+
   useEffect(() => {
     if (!isCloud) dispatch({ type: "HYDRATE", project: loadProject() });
   }, [isCloud]);
@@ -140,6 +174,12 @@ export function ProjectProvider({
   useEffect(() => {
     if (!isCloud && project.id !== "") saveProject(project);
   }, [isCloud, project]);
+
+  const currentMemberId = isCloud
+    ? cloud.currentMemberId
+    : localMemberId && project.members.some((m) => m.id === localMemberId)
+      ? localMemberId
+      : null;
 
   // The React Compiler memoizes this; no manual useMemo/useCallback needed.
   const findModule = (id: string) => project.modules.find((m) => m.id === id);
@@ -157,25 +197,21 @@ export function ProjectProvider({
       dispatch({ type: "UPDATE_PROJECT", patch });
       mirror?.updateProject(patch);
     },
-    setStrengths: (strengths) => {
-      dispatch({ type: "SET_STRENGTHS", strengths });
-      mirror?.setStrengths(strengths);
-    },
 
     addModule: (input = {}) => {
-      const type = input.type ?? "task";
+      const firstBlock = orderedBlocks(project)[0];
       const newModule: ProjectModule = {
         id: crypto.randomUUID(),
         title: input.title ?? "",
         description: "",
-        type,
         status: "todo",
         dueDate: input.dueDate ?? null,
-        assigneeIds: [],
+        assigneeIds: input.assigneeId ? [input.assigneeId] : [],
         checklist: [],
         dependsOn: [],
-        // Milestones ARE entregas, they never belong to one.
-        deliverableId: type === "milestone" ? null : input.deliverableId ?? null,
+        blockId: input.blockId ?? firstBlock?.id ?? null,
+        importance: IMPORTANCE_DEFAULT,
+        docType: input.docType ?? null,
         order: project.modules.length,
         createdAt: new Date().toISOString(),
       };
@@ -184,13 +220,7 @@ export function ProjectProvider({
       return newModule.id;
     },
 
-    updateModule: (id, patch) => {
-      // Turning a module into a milestone (an entrega) detaches it from any
-      // block it belonged to — blocks can't be nested.
-      const merged =
-        patch.type === "milestone" ? { ...patch, deliverableId: null } : patch;
-      applyModulePatch(id, merged);
-    },
+    updateModule: applyModulePatch,
     deleteModule: (id) => {
       dispatch({ type: "DELETE_MODULE", id });
       mirror?.deleteModule(id);
@@ -207,6 +237,12 @@ export function ProjectProvider({
       applyModulePatch(moduleId, { assigneeIds });
     },
 
+    assignToMember: (moduleId, memberId) => {
+      applyModulePatch(moduleId, {
+        assigneeIds: memberId ? [memberId] : [],
+      });
+    },
+
     toggleDependency: (moduleId, depId) => {
       const mod = findModule(moduleId);
       if (!mod || moduleId === depId) return;
@@ -216,15 +252,65 @@ export function ProjectProvider({
         });
         return;
       }
-      // Belt and braces: the picker already hides cyclic candidates.
+      // Belt and braces: the map view already rejects cyclic drops.
       if (wouldCreateCycle(project, moduleId, depId)) return;
       applyModulePatch(moduleId, { dependsOn: [...mod.dependsOn, depId] });
     },
 
-    setDeliverable: (moduleId, deliverableId) => {
-      const mod = findModule(moduleId);
-      if (!mod || mod.type === "milestone") return;
-      applyModulePatch(moduleId, { deliverableId });
+    setModuleBlock: (moduleId, blockId) => {
+      if (!project.blocks.some((b) => b.id === blockId)) return;
+      applyModulePatch(moduleId, { blockId });
+    },
+
+    setImportance: (moduleId, importance) => {
+      applyModulePatch(moduleId, { importance: clampImportance(importance) });
+    },
+
+    reorderModules: (orderedIds) => {
+      dispatch({ type: "REORDER_MODULES", orderedIds });
+      // Mirror each re-ordered row with its new order value.
+      const index = new Map(orderedIds.map((id, i) => [id, i]));
+      for (const mod of project.modules) {
+        const order = index.get(mod.id);
+        if (order !== undefined && order !== mod.order) {
+          mirror?.upsertModule({ ...mod, order });
+        }
+      }
+    },
+
+    addBlock: (input = {}) => {
+      const block: ProjectBlock = {
+        id: crypto.randomUUID(),
+        name: input.name ?? "Nuevo bloque",
+        mode: input.mode ?? "independent",
+        order: project.blocks.length,
+      };
+      dispatch({ type: "ADD_BLOCK", block });
+      mirror?.upsertBlock(block);
+      return block.id;
+    },
+
+    updateBlock: (id, patch) => {
+      const current = project.blocks.find((b) => b.id === id);
+      dispatch({ type: "UPDATE_BLOCK", id, patch });
+      if (current) mirror?.upsertBlock({ ...current, ...patch });
+    },
+
+    deleteBlock: (id) => {
+      if (project.blocks.length <= 1) return;
+      dispatch({ type: "DELETE_BLOCK", id });
+      mirror?.deleteBlock(id);
+    },
+
+    reorderBlocks: (orderedIds) => {
+      dispatch({ type: "REORDER_BLOCKS", orderedIds });
+      const index = new Map(orderedIds.map((id, i) => [id, i]));
+      for (const block of project.blocks) {
+        const order = index.get(block.id);
+        if (order !== undefined && order !== block.order) {
+          mirror?.upsertBlock({ ...block, order });
+        }
+      }
     },
 
     addChecklistItem: (moduleId, text) => {
@@ -264,6 +350,7 @@ export function ProjectProvider({
         role: input.role ?? "",
         colorKey: nextMemberColorKey(project.members.map((m) => m.colorKey)),
         isCoordinator: false,
+        strengths: [],
       };
       dispatch({ type: "ADD_MEMBER", member });
       mirror?.addMember(member);
@@ -289,6 +376,22 @@ export function ProjectProvider({
       mirror?.deleteMember(id, taskPatches);
     },
 
+    setMemberStrengths: (memberId, strengths) => {
+      const clean = strengths.map((s) => s.trim()).filter(Boolean);
+      dispatch({
+        type: "UPDATE_MEMBER",
+        id: memberId,
+        patch: { strengths: clean },
+      });
+      // Strengths live on the group's jsonb record, not the member row —
+      // a dedicated mirror call, not updateMember.
+      mirror?.setMemberStrengths(memberId, clean);
+    },
+
+    setCurrentMember: (memberId) => {
+      if (!isCloud) saveLocalIdentity(memberId);
+    },
+
     // "Restore demo data" only makes sense for the local prototype; cloud
     // dashboards hide the button and this stays a no-op as a belt-and-braces.
     reset: () => {
@@ -301,7 +404,7 @@ export function ProjectProvider({
     isReady,
     mode: isCloud ? "cloud" : "local",
     joinCode: cloud?.joinCode ?? null,
-    currentMemberId: cloud?.currentMemberId ?? null,
+    currentMemberId,
     ...api,
   };
 

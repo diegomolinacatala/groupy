@@ -2,8 +2,9 @@
 
 import { Check, Link2, Lock, Plus, X } from "lucide-react";
 import { Popover } from "@/components/ui/Popover";
+import { DocTypeBadge } from "@/components/ui/DocTypeBadge";
 import { wouldCreateCycle } from "@/lib/data/flow";
-import { MODULE_TYPE_META, type Project, type ProjectModule } from "@/lib/data/types";
+import type { Project, ProjectModule } from "@/lib/data/types";
 import { cn } from "@/lib/utils/cn";
 
 interface DependencyFieldProps {
@@ -13,8 +14,8 @@ interface DependencyFieldProps {
 }
 
 /**
- * Direct dependencies editor: chips for the current prerequisites plus a
- * picker that hides anything that would create a cycle.
+ * Direct task→task dependencies (the padlock): chips for the current
+ * prerequisites plus a picker that hides anything that would create a cycle.
  */
 export function DependencyField({
   project,
@@ -34,13 +35,7 @@ export function DependencyField({
 
   return (
     <div className="flex flex-col gap-2">
-      {deps.length === 0 && (
-        <p className="text-xs text-muted-2">
-          Sin dependencias directas — no espera a ninguna otra tarea.
-        </p>
-      )}
       {deps.map((dep) => {
-        const meta = MODULE_TYPE_META[dep.type];
         const pending = dep.status !== "done";
         return (
           <span
@@ -52,11 +47,7 @@ export function DependencyField({
             ) : (
               <Check className="h-3.5 w-3.5 shrink-0 text-done" />
             )}
-            <span
-              className="h-1.5 w-1.5 shrink-0 rounded-full"
-              style={{ backgroundColor: meta.color }}
-              title={meta.label}
-            />
+            <DocTypeBadge docType={dep.docType} />
             <span
               className={cn(
                 "min-w-0 flex-1 truncate text-xs font-medium",
@@ -92,42 +83,33 @@ export function DependencyField({
       >
         {(close) =>
           candidates.length === 0 ? (
-            <p className="px-2.5 py-2 text-xs text-muted">
-              No hay módulos disponibles (los que crearían un ciclo se ocultan).
-            </p>
+            <p className="px-2.5 py-2 text-xs text-muted">Sin candidatas.</p>
           ) : (
             <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
-              {candidates.map((candidate) => {
-                const meta = MODULE_TYPE_META[candidate.type];
-                return (
-                  <button
-                    key={candidate.id}
-                    type="button"
-                    onClick={() => {
-                      onToggle(candidate.id);
-                      close();
-                    }}
-                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-surface-2"
+              {candidates.map((candidate) => (
+                <button
+                  key={candidate.id}
+                  type="button"
+                  onClick={() => {
+                    onToggle(candidate.id);
+                    close();
+                  }}
+                  className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-surface-2"
+                >
+                  <Link2 className="h-3.5 w-3.5 shrink-0 text-muted" />
+                  <DocTypeBadge docType={candidate.docType} />
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate text-xs",
+                      candidate.status === "done"
+                        ? "text-muted line-through"
+                        : "text-ink",
+                    )}
                   >
-                    <Link2 className="h-3.5 w-3.5 shrink-0 text-muted" />
-                    <span
-                      className="h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: meta.color }}
-                      title={meta.label}
-                    />
-                    <span
-                      className={cn(
-                        "min-w-0 flex-1 truncate text-xs",
-                        candidate.status === "done"
-                          ? "text-muted line-through"
-                          : "text-ink",
-                      )}
-                    >
-                      {candidate.title || "Sin título"}
-                    </span>
-                  </button>
-                );
-              })}
+                    {candidate.title || "Sin título"}
+                  </span>
+                </button>
+              ))}
             </div>
           )
         }

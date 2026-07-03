@@ -19,21 +19,35 @@ export const teamMemberSchema = z.object({
   role: z.string().max(100),
   colorKey: z.string().max(40),
   isCoordinator: z.boolean(),
+  // Carried in the local model; persisted via the group's strengths record,
+  // never on the member row.
+  strengths: z.array(z.string().max(100)).max(30).default([]),
+});
+
+export const projectBlockSchema = z.object({
+  id: z.uuid(),
+  name: z.string().max(200),
+  mode: z.enum(["sequence", "independent"]),
+  order: z.number().int().min(0).max(100_000),
 });
 
 export const projectModuleSchema = z.object({
   id: z.uuid(),
   title: z.string().max(200),
   description: z.string().max(4000),
-  type: z.enum(["task", "milestone", "objective"]),
   status: z.enum(["todo", "in_progress", "done"]),
   dueDate: isoDate.nullable(),
   assigneeIds: z.array(z.uuid()).max(20),
   checklist: z.array(checklistItemSchema).max(100),
   // Flow fields: accepted on the wire but NOT persisted yet (no DB columns —
-  // see taskRowToModule in mapping.ts). Defaults keep old payloads valid.
+  // see the KNOWN GAP note in mapping.ts). Defaults keep old payloads valid.
   dependsOn: z.array(z.uuid()).max(50).default([]),
-  deliverableId: z.uuid().nullable().default(null),
+  blockId: z.uuid().nullable().default(null),
+  importance: z.number().int().min(1).max(10).default(5),
+  docType: z
+    .enum(["doc", "slides", "sheet", "pdf", "code", "image"])
+    .nullable()
+    .default(null),
   order: z.number().int().min(0).max(100_000),
   createdAt: z.iso.datetime(),
 });
@@ -43,8 +57,8 @@ export const createProjectInputSchema = z.object({
   description: z.string().max(4000),
   startDate: isoDate.nullable(),
   dueDate: isoDate.nullable(),
-  strengths: z.array(z.string().min(1).max(100)).max(30),
   members: z.array(teamMemberSchema).min(1).max(20),
+  blocks: z.array(projectBlockSchema).max(50),
   modules: z.array(projectModuleSchema).max(300),
 });
 export type CreateProjectInput = z.infer<typeof createProjectInputSchema>;
@@ -64,14 +78,19 @@ export const updateProjectInputSchema = z.object({
   patch: projectMetaPatchSchema,
 });
 
-export const strengthsInputSchema = z.object({
-  groupId: z.uuid(),
+export const memberStrengthsInputSchema = z.object({
+  memberId: z.uuid(),
   strengths: z.array(z.string().min(1).max(100)).max(30),
 });
 
 export const upsertTaskInputSchema = z.object({
   groupId: z.uuid(),
   module: projectModuleSchema,
+});
+
+export const upsertBlockInputSchema = z.object({
+  groupId: z.uuid(),
+  block: projectBlockSchema,
 });
 
 export const deleteTaskInputSchema = z.object({

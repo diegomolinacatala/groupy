@@ -1,9 +1,9 @@
 import {
   CalendarDays,
+  CircleUser,
   Columns3,
-  LayoutDashboard,
-  ListTodo,
   Sparkles,
+  SquareKanban,
   Users,
   Waypoints,
   type LucideIcon,
@@ -22,22 +22,22 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-// Flow + map are the primary surfaces; calendar and board stay as secondary
-// planning views (locked decision from the flow redesign).
+// Personal / Organización / Mapa are the central tabs; calendar and board
+// stay as secondary planning views.
 export const NAV_GROUPS: NavGroup[] = [
   {
     title: null,
     items: [
-      { view: "flow", label: "Tareas", icon: ListTodo },
+      { view: "personal", label: "Personal", icon: CircleUser },
+      { view: "organization", label: "Organización", icon: Columns3 },
       { view: "map", label: "Mapa", icon: Waypoints },
-      { view: "overview", label: "Resumen", icon: LayoutDashboard },
     ],
   },
   {
     title: "Más vistas",
     items: [
       { view: "calendar", label: "Calendario", icon: CalendarDays },
-      { view: "board", label: "Tablero", icon: Columns3 },
+      { view: "board", label: "Tablero", icon: SquareKanban },
       { view: "team", label: "Equipo", icon: Users },
       { view: "strengths", label: "Fortalezas", icon: Sparkles },
     ],

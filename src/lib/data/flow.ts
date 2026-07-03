@@ -1,148 +1,163 @@
-import type { Project, ProjectModule } from "./types";
+import type {
+  Project,
+  ProjectBlock,
+  ProjectModule,
+  TeamMember,
+} from "./types";
 
 /**
  * Flow engine — pure derivations over `Project`, no I/O and no React.
  *
- * Groupy models the work as a flow of tasks with two SEPARATE dependency
- * kinds:
+ * Two SEPARATE gating mechanisms, never mixed:
  *
- * 1. "direct"  — task → task. `module.dependsOn` lists modules that must be
- *    done before this one unlocks (the padlock).
- * 2. Entregas (deliverable blocks) — modules of type "milestone" act as
- *    ordered delivery blocks. Assigning `module.deliverableId = milestone.id`
- *    derives two extra rules:
- *      a. "block-task": a milestone waits for every module assigned to it
- *         (you can't deliver an entrega with pending tasks).
- *      b. "previous-deliverable": a module assigned to entrega N waits for
- *         entrega N-1 to be marked done (blocks are sequential).
+ * 1. Candado (task → task). `module.dependsOn` lists tasks that must be done
+ *    before this one unlocks. This is the only padlock, and the only edge
+ *    kind in the dependency map.
+ * 2. Orden de bloques (block → block). Blocks marked "sequence" form a
+ *    chain in `block.order`: a sequence block opens when every earlier
+ *    sequence block is complete (all of its tasks done). "independent"
+ *    blocks are always open. Blocks are containers — they are NOT nodes of
+ *    the task graph and never appear in `dependsOn`.
  *
- * A module is LOCKED while any effective prerequisite is not done. The lock
- * is enforced softly at the UI layer (status controls / drags are guarded);
- * the reducer itself never forbids a status change, so relaxing or hardening
- * the rule only touches this file and the components that read it.
+ * A task is LOCKED while any direct prerequisite is pending OR its block
+ * hasn't opened. The lock is enforced softly at the UI layer; the reducer
+ * never forbids a status change, so relaxing or hardening the rule only
+ * touches this file and the components that read it.
  *
- * Everything here is recomputed from scratch on each call — with tens or a
- * few hundred modules that is well below any perf concern, and it keeps the
- * rules trivially editable while the product is still taking shape.
+ * Everything is recomputed from scratch on each call — trivial at prototype
+ * scale, and it keeps the rules easy to edit.
  */
 
 export type FlowState = "locked" | "available" | "done";
 
-export type DependencyKind = "direct" | "block-task" | "previous-deliverable";
+/** waiting = a previous sequence block is still incomplete. */
+export type BlockState = "waiting" | "open" | "complete";
 
-export interface FlowLink {
-  module: ProjectModule;
-  kind: DependencyKind;
+export interface BlockFlow {
+  block: ProjectBlock;
+  state: BlockState;
+  /** Tasks of this block, in flow order. */
+  modules: ProjectModule[];
+  doneCount: number;
+  /** For waiting blocks: the nearest incomplete sequence block before it. */
+  waitsFor: ProjectBlock | null;
 }
 
 export interface ModuleFlow {
   module: ProjectModule;
   state: FlowState;
-  /** Every prerequisite, done or not — the left side of the mini flowchart. */
-  requires: FlowLink[];
-  /** Prerequisites still pending — what keeps the module locked. */
-  blockers: FlowLink[];
-  /** Modules that wait on this one — the right side of the mini flowchart. */
-  unlocks: FlowLink[];
+  /** Direct task→task prerequisites, done or not. */
+  requires: ProjectModule[];
+  /** Direct prerequisites still pending — the closed padlock. */
+  blockers: ProjectModule[];
+  /** Tasks that directly depend on this one. */
+  unlocks: ProjectModule[];
+  /** Set when the task's block hasn't opened yet (block gate, not padlock). */
+  waitingForBlock: ProjectBlock | null;
   /**
-   * Members with a pending module DIRECTLY depending on this one. Drives the
-   * coloured padlock in the dependency map ("Carla está esperando esta
-   * tarea"). Derived entrega edges are excluded on purpose: milestones are
-   * usually assigned to everyone and would turn every square into "all of us
-   * are waiting", drowning the signal.
+   * Members with a pending task directly depending on this one — drives the
+   * tinted padlock ("Carla está esperando esta tarea").
    */
   waitingMemberIds: string[];
 }
 
-export interface DeliverableBlock {
-  /** The milestone that closes the block; null groups the loose modules. */
-  deliverable: ProjectModule | null;
-  /** Non-milestone modules assigned to the block, in flow order. */
-  modules: ProjectModule[];
-}
-
 export interface ProjectFlow {
   byId: Map<string, ModuleFlow>;
-  /** Ordered entrega blocks, followed by the "sin entrega" bucket if any. */
-  blocks: DeliverableBlock[];
+  blockById: Map<string, BlockFlow>;
+  /** Every block in `order`, each with its tasks. */
+  blocks: BlockFlow[];
 }
 
 const NO_DATE = "9999-12-31";
 
 function byFlowOrder(a: ProjectModule, b: ProjectModule): number {
+  if (a.order !== b.order) return a.order - b.order;
   const dateA = a.dueDate ?? NO_DATE;
   const dateB = b.dueDate ?? NO_DATE;
   if (dateA !== dateB) return dateA < dateB ? -1 : 1;
-  if (a.order !== b.order) return a.order - b.order;
   return a.createdAt.localeCompare(b.createdAt);
 }
 
-/** Milestones (entregas) in their sequential order. */
-export function orderedDeliverables(project: Project): ProjectModule[] {
-  return project.modules
-    .filter((m) => m.type === "milestone")
-    .sort(byFlowOrder);
+/** Blocks in their sequence order. */
+export function orderedBlocks(project: Project): ProjectBlock[] {
+  return [...project.blocks].sort((a, b) => a.order - b.order);
 }
 
 /**
- * Resolves a module's entrega, tolerating stale data: a `deliverableId`
- * pointing to a deleted module or to one that is no longer a milestone is
- * treated as "sin entrega" instead of blocking anything.
+ * Resolves a task's block, tolerating stale data: a `blockId` pointing to a
+ * deleted block falls back to the first block (the data layer normalizes on
+ * load, so this only covers mid-session races).
  */
-export function deliverableOf(
+export function blockOf(
   project: Project,
   module: ProjectModule,
-): ProjectModule | null {
-  if (!module.deliverableId || module.type === "milestone") return null;
-  const target = project.modules.find((m) => m.id === module.deliverableId);
-  return target && target.type === "milestone" ? target : null;
+): ProjectBlock | null {
+  const blocks = orderedBlocks(project);
+  if (blocks.length === 0) return null;
+  return blocks.find((b) => b.id === module.blockId) ?? blocks[0];
 }
 
-/** All prerequisite links of a module, applying the three rules above. */
-function requiresOf(
-  project: Project,
-  module: ProjectModule,
-  deliverables: ProjectModule[],
-): FlowLink[] {
-  const links: FlowLink[] = [];
-
-  for (const depId of module.dependsOn) {
-    if (depId === module.id) continue;
-    const dep = project.modules.find((m) => m.id === depId);
-    if (dep) links.push({ module: dep, kind: "direct" });
-  }
-
-  if (module.type === "milestone") {
-    for (const member of project.modules) {
-      if (member.deliverableId === module.id && member.type !== "milestone") {
-        links.push({ module: member, kind: "block-task" });
-      }
-    }
-    return links;
-  }
-
-  const block = deliverableOf(project, module);
-  if (block) {
-    const index = deliverables.findIndex((d) => d.id === block.id);
-    const previous = index > 0 ? deliverables[index - 1] : null;
-    if (previous) links.push({ module: previous, kind: "previous-deliverable" });
-  }
-
-  return links;
-}
-
-/** Derives the full flow index (states, blockers, unlocks, entrega blocks). */
+/** Derives the full flow index: block states, task states, edges. */
 export function buildProjectFlow(project: Project): ProjectFlow {
-  const deliverables = orderedDeliverables(project);
-  const byId = new Map<string, ModuleFlow>();
+  const blocks = orderedBlocks(project);
 
+  // Group tasks into their blocks (stale/null blockId → first block).
+  const tasksByBlock = new Map<string, ProjectModule[]>(
+    blocks.map((b) => [b.id, []]),
+  );
   for (const mod of project.modules) {
-    const requires = requiresOf(project, mod, deliverables);
-    const blockers = requires.filter((l) => l.module.status !== "done");
+    const block = blockOf(project, mod);
+    if (block) tasksByBlock.get(block.id)!.push(mod);
+  }
+  for (const list of tasksByBlock.values()) list.sort(byFlowOrder);
+
+  // Block states. A block is complete when all of its tasks are done (an
+  // empty block never holds the chain). A sequence block opens when every
+  // earlier sequence block is complete; independent blocks are always open.
+  const blockById = new Map<string, BlockFlow>();
+  const blockFlows: BlockFlow[] = [];
+  let pendingSequenceBlock: ProjectBlock | null = null;
+  for (const block of blocks) {
+    const modules = tasksByBlock.get(block.id)!;
+    const doneCount = modules.filter((m) => m.status === "done").length;
+    const complete = doneCount === modules.length;
+    let state: BlockState;
+    let waitsFor: ProjectBlock | null = null;
+    if (block.mode === "independent") {
+      state = complete && modules.length > 0 ? "complete" : "open";
+    } else if (pendingSequenceBlock) {
+      state = "waiting";
+      waitsFor = pendingSequenceBlock;
+    } else {
+      state = complete && modules.length > 0 ? "complete" : "open";
+    }
+    if (block.mode === "sequence" && !complete) {
+      pendingSequenceBlock = block;
+    }
+    const flow: BlockFlow = { block, state, modules, doneCount, waitsFor };
+    blockById.set(block.id, flow);
+    blockFlows.push(flow);
+  }
+
+  // Task states.
+  const byId = new Map<string, ModuleFlow>();
+  for (const mod of project.modules) {
+    const requires: ProjectModule[] = [];
+    for (const depId of mod.dependsOn) {
+      if (depId === mod.id) continue;
+      const dep = project.modules.find((m) => m.id === depId);
+      if (dep) requires.push(dep);
+    }
+    const blockers = requires.filter((d) => d.status !== "done");
+    const block = blockOf(project, mod);
+    const blockFlow = block ? blockById.get(block.id) : null;
+    // The gate names the block being waited on, not the task's own block.
+    const waitingForBlock =
+      blockFlow && blockFlow.state === "waiting" ? blockFlow.waitsFor : null;
     const state: FlowState =
       mod.status === "done"
         ? "done"
-        : blockers.length > 0
+        : blockers.length > 0 || waitingForBlock
           ? "locked"
           : "available";
     byId.set(mod.id, {
@@ -151,17 +166,18 @@ export function buildProjectFlow(project: Project): ProjectFlow {
       requires,
       blockers,
       unlocks: [],
+      waitingForBlock,
       waitingMemberIds: [],
     });
   }
 
   // Invert the edges: A requires B  ⇒  B unlocks A.
   for (const flow of byId.values()) {
-    for (const link of flow.requires) {
-      const target = byId.get(link.module.id);
+    for (const dep of flow.requires) {
+      const target = byId.get(dep.id);
       if (!target) continue;
-      target.unlocks.push({ module: flow.module, kind: link.kind });
-      if (link.kind === "direct" && flow.module.status !== "done") {
+      target.unlocks.push(flow.module);
+      if (flow.module.status !== "done") {
         for (const memberId of flow.module.assigneeIds) {
           if (!target.waitingMemberIds.includes(memberId)) {
             target.waitingMemberIds.push(memberId);
@@ -171,26 +187,10 @@ export function buildProjectFlow(project: Project): ProjectFlow {
     }
   }
 
-  const blocks: DeliverableBlock[] = deliverables.map((deliverable) => ({
-    deliverable,
-    modules: project.modules
-      .filter(
-        (m) =>
-          m.type !== "milestone" &&
-          deliverableOf(project, m)?.id === deliverable.id,
-      )
-      .sort(byFlowOrder),
-  }));
-
-  const loose = project.modules
-    .filter((m) => m.type !== "milestone" && !deliverableOf(project, m))
-    .sort(byFlowOrder);
-  if (loose.length > 0) blocks.push({ deliverable: null, modules: loose });
-
-  return { byId, blocks };
+  return { byId, blockById, blocks: blockFlows };
 }
 
-/** Ids of every locked module — handy for calendar / board decorations. */
+/** Ids of every locked task — handy for calendar / board decorations. */
 export function lockedModuleIds(project: Project): Set<string> {
   const flow = buildProjectFlow(project);
   const locked = new Set<string>();
@@ -201,9 +201,26 @@ export function lockedModuleIds(project: Project): Set<string> {
 }
 
 /**
+ * Members (other than `selfId`) whose pending tasks are blocking this one —
+ * the short "Diego está bloqueando" notice. Direct deps only.
+ */
+export function blockingMembers(
+  entry: ModuleFlow,
+  members: TeamMember[],
+  selfId: string | null,
+): TeamMember[] {
+  const ids = new Set<string>();
+  for (const blocker of entry.blockers) {
+    for (const memberId of blocker.assigneeIds) {
+      if (memberId !== selfId) ids.add(memberId);
+    }
+  }
+  return members.filter((m) => ids.has(m.id));
+}
+
+/**
  * Whether adding `candidateDepId` to `moduleId.dependsOn` would create a
- * cycle. Walks the FULL effective graph (direct + derived entrega edges) so
- * a task can't end up waiting on itself through a milestone either.
+ * cycle. Task→task edges only — blocks are not part of this graph.
  */
 export function wouldCreateCycle(
   project: Project,
@@ -211,11 +228,9 @@ export function wouldCreateCycle(
   candidateDepId: string,
 ): boolean {
   if (moduleId === candidateDepId) return true;
-  const deliverables = orderedDeliverables(project);
 
   // Depth-first from the candidate: if we can reach `moduleId` following
-  // prerequisite edges, then `moduleId` is (transitively) a prerequisite of
-  // the candidate and the new edge would close a loop.
+  // dependency edges, the new edge would close a loop.
   const visited = new Set<string>();
   const stack = [candidateDepId];
   while (stack.length > 0) {
@@ -225,9 +240,7 @@ export function wouldCreateCycle(
     visited.add(currentId);
     const current = project.modules.find((m) => m.id === currentId);
     if (!current) continue;
-    for (const link of requiresOf(project, current, deliverables)) {
-      stack.push(link.module.id);
-    }
+    for (const depId of current.dependsOn) stack.push(depId);
   }
   return false;
 }

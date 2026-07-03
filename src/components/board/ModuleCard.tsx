@@ -3,12 +3,8 @@
 import { useDraggable } from "@dnd-kit/core";
 import { CalendarClock, Lock } from "lucide-react";
 import { AvatarStack } from "@/components/ui/Avatar";
-import { Badge } from "@/components/ui/Badge";
-import {
-  MODULE_TYPE_META,
-  type ProjectModule,
-  type TeamMember,
-} from "@/lib/data/types";
+import { DocTypeBadge } from "@/components/ui/DocTypeBadge";
+import type { ProjectModule, TeamMember } from "@/lib/data/types";
 import { daysUntil, deadlineLabel } from "@/lib/utils/dates";
 import { cn } from "@/lib/utils/cn";
 
@@ -23,7 +19,6 @@ function CardInner({
   dragging?: boolean;
   locked?: boolean;
 }) {
-  const meta = MODULE_TYPE_META[module.type];
   const assignees = members.filter((m) => module.assigneeIds.includes(m.id));
   const doneItems = module.checklist.filter((c) => c.done).length;
   const overdue =
@@ -39,9 +34,9 @@ function CardInner({
         dragging ? "shadow-pop" : !locked && "shadow-card hover:border-line-strong",
       )}
     >
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <Badge label={meta.label} color={meta.color} soft={meta.soft} />
-        <span className="flex items-center gap-1.5">
+      <div className="mb-2 flex items-center gap-2">
+        <DocTypeBadge docType={module.docType} />
+        <span className="ml-auto flex items-center gap-1.5">
           {module.checklist.length > 0 && (
             <span className="shrink-0 text-xs text-muted">
               {doneItems}/{module.checklist.length}
@@ -50,7 +45,7 @@ function CardInner({
           {locked && (
             <Lock
               className="h-3.5 w-3.5 shrink-0 text-muted"
-              aria-label="Bloqueada por dependencias"
+              aria-label="Bloqueada"
             />
           )}
         </span>

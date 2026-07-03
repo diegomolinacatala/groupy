@@ -3,9 +3,10 @@ import {
   addCloudMember,
   deleteCloudMember,
   deleteCloudTask,
-  setCloudStrengths,
+  setCloudMemberStrengths,
   updateCloudMember,
   updateCloudProject,
+  upsertCloudBlock,
   upsertCloudTask,
 } from "./actions";
 
@@ -45,16 +46,21 @@ export function createCloudMirror(ctx: CloudContext): ProjectMirror {
       enqueue("el proyecto", () =>
         updateCloudProject({ projectId: ctx.projectId, patch }),
       ),
-    setStrengths: (strengths) =>
-      enqueue("los puntos fuertes", () =>
-        setCloudStrengths({ groupId: ctx.groupId, strengths }),
-      ),
     upsertModule: (module) =>
-      enqueue("el módulo", () =>
+      enqueue("la tarea", () =>
         upsertCloudTask({ groupId: ctx.groupId, module }),
       ),
     deleteModule: (id) =>
-      enqueue("el módulo", () =>
+      enqueue("la tarea", () =>
+        deleteCloudTask({ groupId: ctx.groupId, taskId: id }),
+      ),
+    upsertBlock: (block) =>
+      enqueue("el bloque", () =>
+        upsertCloudBlock({ groupId: ctx.groupId, block }),
+      ),
+    // A block is a milestone row in `tasks` — same delete path.
+    deleteBlock: (id) =>
+      enqueue("el bloque", () =>
         deleteCloudTask({ groupId: ctx.groupId, taskId: id }),
       ),
     addMember: (member) =>
@@ -68,6 +74,10 @@ export function createCloudMirror(ctx: CloudContext): ProjectMirror {
     deleteMember: (id, taskPatches) =>
       enqueue("el equipo", () =>
         deleteCloudMember({ groupId: ctx.groupId, memberId: id, taskPatches }),
+      ),
+    setMemberStrengths: (memberId, strengths) =>
+      enqueue("las fortalezas", () =>
+        setCloudMemberStrengths({ memberId, strengths }),
       ),
   };
 }

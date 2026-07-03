@@ -2,23 +2,33 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import { Lock } from "lucide-react";
-import { MODULE_TYPE_META, type ProjectModule } from "@/lib/data/types";
+import type { ProjectModule, TeamMember } from "@/lib/data/types";
+import { colorForKey } from "@/lib/utils/colors";
 import { cn } from "@/lib/utils/cn";
 
 function ChipInner({
   module,
+  members,
   dragging,
   locked,
 }: {
   module: ProjectModule;
+  members: TeamMember[];
   dragging?: boolean;
   locked?: boolean;
 }) {
-  const meta = MODULE_TYPE_META[module.type];
   const done = module.status === "done";
+  // Coloured by its first assignee — the member colour is the app's shared
+  // visual language; unassigned tasks stay neutral.
+  const owner = members.find((m) => module.assigneeIds.includes(m.id));
+  const color = owner ? colorForKey(owner.colorKey) : null;
+
   return (
     <div
-      style={{ borderLeftColor: meta.color, backgroundColor: meta.soft }}
+      style={{
+        borderLeftColor: color?.bg ?? "var(--color-line-strong)",
+        backgroundColor: color ? color.bg + "14" : "var(--color-surface-2)",
+      }}
       className={cn(
         "flex items-center gap-1 rounded-md border-l-[3px] px-1.5 py-1 text-left text-[11px] leading-tight",
         dragging ? "shadow-pop" : "hover:brightness-[0.98]",
@@ -26,10 +36,7 @@ function ChipInner({
       )}
     >
       {locked && (
-        <Lock
-          className="h-3 w-3 shrink-0 text-muted"
-          aria-label="Bloqueada por dependencias"
-        />
+        <Lock className="h-3 w-3 shrink-0 text-muted" aria-label="Bloqueada" />
       )}
       {module.status === "in_progress" && (
         <span
@@ -52,21 +59,24 @@ function ChipInner({
 /** Static visual, used inside the DragOverlay while dragging. */
 export function ModuleChipStatic({
   module,
+  members,
   locked,
 }: {
   module: ProjectModule;
+  members: TeamMember[];
   locked?: boolean;
 }) {
-  return <ChipInner module={module} locked={locked} dragging />;
+  return <ChipInner module={module} members={members} locked={locked} dragging />;
 }
 
 interface ModuleChipProps {
   module: ProjectModule;
+  members: TeamMember[];
   locked?: boolean;
   onOpen: () => void;
 }
 
-export function ModuleChip({ module, locked, onOpen }: ModuleChipProps) {
+export function ModuleChip({ module, members, locked, onOpen }: ModuleChipProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: module.id,
     data: { type: "module" },
@@ -83,7 +93,7 @@ export function ModuleChip({ module, locked, onOpen }: ModuleChipProps) {
         isDragging && "opacity-30",
       )}
     >
-      <ChipInner module={module} locked={locked} />
+      <ChipInner module={module} members={members} locked={locked} />
     </button>
   );
 }

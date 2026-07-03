@@ -72,7 +72,7 @@ export function Topbar() {
           <div className="ml-0.5 mt-0.5 flex items-center gap-3 text-xs text-muted">
             <span className="inline-flex items-center gap-1">
               <CalendarClock className="h-3.5 w-3.5" />
-              Entrega {formatShort(project.dueDate)}
+              Plazo {formatShort(project.dueDate)}
             </span>
 
             <Popover
@@ -125,7 +125,7 @@ export function Topbar() {
           </button>
           <Button variant="primary" onClick={handleAdd}>
             <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Nuevo módulo</span>
+            <span className="hidden sm:inline">Tarea</span>
           </Button>
         </div>
       </div>
