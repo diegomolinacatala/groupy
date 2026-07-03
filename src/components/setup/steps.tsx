@@ -4,8 +4,9 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import type { SetupAnswers } from "@/lib/data/plan";
 import { cn } from "@/lib/utils/cn";
+import { addDaysISO, addMonthsISO, daysBetweenISO } from "@/lib/utils/dates";
 
-// The five wizard questions. Each step renders a heading and one input;
+// The three wizard questions. Each step renders a heading and one input;
 // navigation and the continue button live in SetupWizard.
 
 interface StepProps {
@@ -25,7 +26,7 @@ function WizardHeading({
 }: {
   overline: string;
   question: string;
-  helper: string;
+  helper?: string;
 }) {
   return (
     <div className="mb-8">
@@ -33,7 +34,9 @@ function WizardHeading({
       <h1 className="type-display text-4xl leading-[1.08] text-ink md:text-5xl">
         {question}
       </h1>
-      <p className="mt-3 text-[15px] leading-relaxed text-muted">{helper}</p>
+      {helper && (
+        <p className="mt-3 text-[15px] leading-relaxed text-muted">{helper}</p>
+      )}
     </div>
   );
 }
@@ -41,39 +44,13 @@ function WizardHeading({
 const inputClass =
   "h-14 w-full rounded-xl border border-line bg-surface px-4 text-lg text-ink outline-none transition-colors placeholder:text-muted-2 focus:border-ink";
 
-export function StepProject({ answers, patch, onNext }: StepProps) {
-  return (
-    <div>
-      <WizardHeading
-        overline="El proyecto"
-        question="¿Cómo se llama vuestro trabajo?"
-        helper="El título del encargo tal y como os lo han planteado."
-      />
-      <input
-        autoFocus
-        value={answers.title}
-        onChange={(e) => patch({ title: e.target.value })}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            onNext();
-          }
-        }}
-        placeholder="Ej. Estudio de movilidad urbana"
-        aria-label="Título del proyecto"
-        className={inputClass}
-      />
-      <textarea
-        value={answers.description}
-        onChange={(e) => patch({ description: e.target.value })}
-        placeholder="¿De qué va? Pega aquí el enunciado si quieres (opcional)"
-        aria-label="Descripción del proyecto"
-        rows={3}
-        className="mt-3 w-full resize-none rounded-xl border border-line bg-surface px-4 py-3 text-[15px] leading-relaxed text-ink-2 outline-none transition-colors placeholder:text-muted-2 focus:border-ink"
-      />
-    </div>
+const chipClass = (active: boolean) =>
+  cn(
+    "rounded-full border px-4 py-2 text-sm font-medium transition-colors",
+    active
+      ? "border-ink bg-ink text-canvas"
+      : "border-line bg-surface text-ink-2 hover:border-line-strong",
   );
-}
 
 export function StepTeam({ answers, patch, onNext }: StepProps) {
   const [draft, setDraft] = useState("");
@@ -101,8 +78,8 @@ export function StepTeam({ answers, patch, onNext }: StepProps) {
     <div>
       <WizardHeading
         overline="El equipo"
-        question="¿Quiénes formáis el grupo?"
-        helper="Empieza por ti: la primera persona coordina el proyecto. Añade al menos a dos."
+        question="¿Quiénes sois?"
+        helper="Al menos dos. La primera persona coordina."
       />
 
       <div className="flex gap-2">
@@ -159,44 +136,82 @@ export function StepTeam({ answers, patch, onNext }: StepProps) {
   );
 }
 
-interface StepDateProps {
-  overline: string;
-  question: string;
-  helper: string;
-  value: string;
-  min?: string;
-  onChange: (value: string) => void;
-  onNext: () => void;
-}
+// Quick due-date presets, relative to the start date.
+const DURATIONS: { label: string; apply: (start: string) => string }[] = [
+  { label: "1 semana", apply: (start) => addDaysISO(start, 7) },
+  { label: "2 semanas", apply: (start) => addDaysISO(start, 14) },
+  { label: "1 mes", apply: (start) => addMonthsISO(start, 1) },
+  { label: "2 meses", apply: (start) => addMonthsISO(start, 2) },
+];
 
-export function StepDate({
-  overline,
-  question,
-  helper,
-  value,
-  min,
-  onChange,
-  onNext,
-}: StepDateProps) {
+export function StepDates({ answers, patch, onNext }: StepProps) {
+  const { startDate, dueDate } = answers;
+
+  // Moving the start keeps the same span, so the due date never goes stale.
+  const handleStartChange = (value: string) => {
+    if (!value) return;
+    patch((prev) => {
+      const span = Math.max(daysBetweenISO(prev.startDate, prev.dueDate), 1);
+      return { startDate: value, dueDate: addDaysISO(value, span) };
+    });
+  };
+
+  const handleEnter = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onNext();
+    }
+  };
+
   return (
     <div>
-      <WizardHeading overline={overline} question={question} helper={helper} />
-      <input
-        autoFocus
-        type="date"
-        value={value}
-        min={min}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            onNext();
-          }
-        }}
-        aria-label={question}
-        className={cn(inputClass, "max-w-xs tabular-nums")}
-      />
-      {min && value && value <= min && (
+      <WizardHeading overline="El calendario" question="¿Qué plazo tenéis?" />
+
+      <div className="flex max-w-md gap-3">
+        <label className="flex-1">
+          <span className="mb-1.5 block text-xs font-medium text-muted">
+            Inicio
+          </span>
+          <input
+            autoFocus
+            type="date"
+            value={startDate}
+            onChange={(e) => handleStartChange(e.target.value)}
+            onKeyDown={handleEnter}
+            aria-label="Fecha de inicio"
+            className={cn(inputClass, "tabular-nums")}
+          />
+        </label>
+        <label className="flex-1">
+          <span className="mb-1.5 block text-xs font-medium text-muted">
+            Entrega
+          </span>
+          <input
+            type="date"
+            value={dueDate}
+            min={startDate}
+            onChange={(e) => e.target.value && patch({ dueDate: e.target.value })}
+            onKeyDown={handleEnter}
+            aria-label="Fecha de entrega"
+            className={cn(inputClass, "tabular-nums")}
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {DURATIONS.map(({ label, apply }) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => patch((prev) => ({ dueDate: apply(prev.startDate) }))}
+            className={chipClass(apply(startDate) === dueDate)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {dueDate && dueDate <= startDate && (
         <p className="mt-3 text-sm text-danger">
           La entrega debe ser posterior al inicio.
         </p>
@@ -238,31 +253,19 @@ export function StepStrengths({ answers, patch, onNext }: StepProps) {
 
   return (
     <div>
-      <WizardHeading
-        overline="El equipo, a su favor"
-        question="¿En qué destacáis?"
-        helper="Lo usaremos como referencia al repartir el trabajo. Puedes saltarte este paso."
-      />
+      <WizardHeading overline="Opcional" question="¿En qué destacáis?" />
 
       <div className="mb-5 flex flex-wrap gap-2">
-        {STRENGTH_SUGGESTIONS.map((suggestion) => {
-          const active = strengths.includes(suggestion);
-          return (
-            <button
-              key={suggestion}
-              type="button"
-              onClick={() => toggle(suggestion)}
-              className={cn(
-                "rounded-full border px-4 py-2 text-sm font-medium transition-colors",
-                active
-                  ? "border-ink bg-ink text-canvas"
-                  : "border-line bg-surface text-ink-2 hover:border-line-strong",
-              )}
-            >
-              {suggestion}
-            </button>
-          );
-        })}
+        {STRENGTH_SUGGESTIONS.map((suggestion) => (
+          <button
+            key={suggestion}
+            type="button"
+            onClick={() => toggle(suggestion)}
+            className={chipClass(strengths.includes(suggestion))}
+          >
+            {suggestion}
+          </button>
+        ))}
       </div>
 
       <input
@@ -274,7 +277,7 @@ export function StepStrengths({ answers, patch, onNext }: StepProps) {
           if (draft.trim()) addDraft();
           else onNext();
         }}
-        placeholder="Otra fortaleza y Enter para añadirla"
+        placeholder="Otra fortaleza…"
         aria-label="Añadir fortaleza"
         className={inputClass}
       />

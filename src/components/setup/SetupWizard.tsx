@@ -4,36 +4,30 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import type { SetupAnswers } from "@/lib/data/plan";
-import { todayISO } from "@/lib/utils/dates";
+import { addMonthsISO, todayISO } from "@/lib/utils/dates";
 import { GeneratingScreen } from "./GeneratingScreen";
-import {
-  StepDate,
-  StepProject,
-  StepStrengths,
-  StepTeam,
-} from "./steps";
+import { StepDates, StepStrengths, StepTeam } from "./steps";
 
 // One question per screen, Talli-style: thin progress bar, big serif
-// question, a single input, Enter to continue. Five steps, then a short
+// question, a single input, Enter to continue. Three steps, then a short
 // "building your plan" pass that writes the generated project to storage.
+// The project gets a default title, renamable inline from the dashboard.
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 3;
 
-type StepIndex = 0 | 1 | 2 | 3 | 4;
+type StepIndex = 0 | 1 | 2;
 
 function isStepValid(step: StepIndex, answers: SetupAnswers): boolean {
   switch (step) {
     case 0:
-      return answers.title.trim().length > 0;
-    case 1:
       return answers.memberNames.length >= 2;
-    case 2:
-      return answers.startDate.length > 0;
-    case 3:
+    case 1:
       return (
-        answers.dueDate.length > 0 && answers.dueDate > answers.startDate
+        answers.startDate.length > 0 &&
+        answers.dueDate.length > 0 &&
+        answers.dueDate > answers.startDate
       );
-    case 4:
+    case 2:
       return true; // strengths are optional
   }
 }
@@ -41,13 +35,16 @@ function isStepValid(step: StepIndex, answers: SetupAnswers): boolean {
 export function SetupWizard() {
   const [step, setStep] = useState<StepIndex>(0);
   const [generating, setGenerating] = useState(false);
-  const [answers, setAnswers] = useState<SetupAnswers>({
-    title: "",
-    description: "",
-    memberNames: [],
-    startDate: todayISO(),
-    dueDate: "",
-    strengths: [],
+  const [answers, setAnswers] = useState<SetupAnswers>(() => {
+    const startDate = todayISO();
+    return {
+      title: "Trabajo en grupo",
+      description: "",
+      memberNames: [],
+      startDate,
+      dueDate: addMonthsISO(startDate, 1),
+      strengths: [],
+    };
   });
 
   // Accepts an updater so list operations (add member, toggle strength)
@@ -124,33 +121,12 @@ export function SetupWizard() {
       <main className="flex flex-1 items-start justify-center px-5 pb-16 pt-[8vh] md:pt-[12vh]">
         <div key={step} className="animate-rise w-full max-w-xl">
           {step === 0 && (
-            <StepProject answers={answers} patch={patch} onNext={goNext} />
-          )}
-          {step === 1 && (
             <StepTeam answers={answers} patch={patch} onNext={goNext} />
           )}
+          {step === 1 && (
+            <StepDates answers={answers} patch={patch} onNext={goNext} />
+          )}
           {step === 2 && (
-            <StepDate
-              overline="El calendario"
-              question="¿Cuándo empezáis?"
-              helper="Desde este día repartimos las primeras tareas."
-              value={answers.startDate}
-              onChange={(startDate) => patch({ startDate })}
-              onNext={goNext}
-            />
-          )}
-          {step === 3 && (
-            <StepDate
-              overline="La entrega"
-              question="¿Cuándo hay que entregarlo?"
-              helper="La fecha límite marca el ritmo de todo el plan."
-              value={answers.dueDate}
-              min={answers.startDate}
-              onChange={(dueDate) => patch({ dueDate })}
-              onNext={goNext}
-            />
-          )}
-          {step === 4 && (
             <StepStrengths answers={answers} patch={patch} onNext={goNext} />
           )}
 

@@ -20,8 +20,8 @@ function subscribeToStorage(onChange: () => void): () => void {
 const FEATURES = [
   {
     number: "01",
-    title: "Cinco preguntas",
-    body: "El encargo, el equipo y las fechas. Nada más: en dos minutos hay plan.",
+    title: "Tres preguntas",
+    body: "El equipo, las fechas y poco más: en un minuto hay plan.",
   },
   {
     number: "02",
@@ -74,7 +74,7 @@ export default function Home() {
             Nosotros repartimos el trabajo. Vosotros lo termináis.
           </h1>
           <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-muted md:text-lg">
-            Responde cinco preguntas y Groupy convierte el encargo en un plan
+            Responde tres preguntas y Groupy convierte el encargo en un plan
             con fechas y tareas asignadas — y en un registro continuo de quién
             hace qué.
           </p>

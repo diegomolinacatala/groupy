@@ -177,7 +177,7 @@ export function buildProjectPlan(answers: SetupAnswers): Project {
 
   return {
     id: uid(),
-    title: answers.title.trim() || "Proyecto sin título",
+    title: answers.title.trim() || "Trabajo en grupo",
     description: answers.description.trim(),
     startDate: answers.startDate,
     dueDate: answers.dueDate,

@@ -50,6 +50,31 @@ export function todayISO(): string {
   return toISODate(new Date());
 }
 
+/** "yyyy-mm-dd" plus `days` days. */
+export function addDaysISO(value: string, days: number): string {
+  const date = parseISODate(value);
+  date.setDate(date.getDate() + days);
+  return toISODate(date);
+}
+
+/** "yyyy-mm-dd" plus `months` calendar months, clamped to the month end. */
+export function addMonthsISO(value: string, months: number): string {
+  const date = parseISODate(value);
+  const day = date.getDate();
+  date.setDate(1);
+  date.setMonth(date.getMonth() + months);
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(day, lastDay));
+  return toISODate(date);
+}
+
+/** Whole days from `a` to `b` ("yyyy-mm-dd" strings). */
+export function daysBetweenISO(a: string, b: string): number {
+  return Math.round(
+    (parseISODate(b).getTime() - parseISODate(a).getTime()) / 86_400_000,
+  );
+}
+
 export function isSameISODay(a: string, b: string): boolean {
   return a === b;
 }
