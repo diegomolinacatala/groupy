@@ -95,17 +95,33 @@ project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mec
   "Diego está bloqueando" notice.
 - **Orden de bloques** — each block is "En orden" (`sequence`) or "Independiente"
   (`independent`). A sequence block opens when every earlier sequence block is complete
-  (all its tasks done; empty never holds the chain). Drawn as a ↓ connector between
-  containers — never as a padlock.
+  (all its tasks done; empty never holds the chain). Drawn as a → connector between
+  diamonds — never as a padlock.
 - Locks stay **soft** (UI-only guards; the reducer never forbids a status change).
 - **Views** (all drag-first, dnd-kit): `PersonalView` — identity picker (local) or claimed
   member (cloud); "Disponibles" (open padlock, advance button, sortable) / "Bloqueadas"
-  (closed padlock + who/what blocks). `OrganizationView` (landing) — "Sin asignar" strip +
-  one tinted column per member; drag to assign (single-owner), corner-handle resize =
-  importance. `MapView` — one flowchart per block: containers reorder by grip, tasks drag
-  between containers, deps are measured-SVG arrows created by dragging node ports (own
-  tasks only when an identity exists) and removed via click-on-edge ×; cross-block deps
-  render as chips on the node.
+  (closed padlock + who/what blocks); plus a **right rail** (lg+) with Entrega countdown
+  + time bar, Tu avance, "Te esperan" (my tasks others wait on → opens the task) and
+  quick actions (nueva tarea para mí, ver el mapa). `OrganizationView` (landing) — "Sin
+  asignar" strip + one tinted column per member; drag to assign (single-owner),
+  corner-handle resize = importance; chips KEEP their importance width inside columns
+  (size = information, everywhere). `MapView` (redesigned 2026-07-03) — a centered rail
+  of **DIAMONDS**, one per block (click = open, drag = reorder, drop a task on one =
+  move it to that block, dashed diamond = add); exactly ONE block open below as a
+  **corkboard** (`Corkboard.tsx`): free Mac-desktop positioning persisted as board
+  fractions (`mapX`/`mapY`, null = auto-layout by dependency depth), low-opacity dot
+  grid that swells while dragging and pulses on drop, pick-up scale/tilt animation
+  (`animate-pick`, also on Personal/Organización overlays). Deps are measured-SVG
+  arrows dragged from node ports (both directions: right = bloquea a, left = depende
+  de) with **magnetic snapping**, valid-target highlighting, invalid dimming, marching
+  dashed preview and a flash on connect; click-on-edge × removes. **Everyone can edit
+  everything in the map** (cycles are the only hard rule). A "Mis tareas" scope fades
+  other people's tasks to ghosts (local mode asks "¿quién eres?" first).
+- **Task popup** (`TaskModal.tsx`, replaced the right SlideOver/`ModuleEditor` —
+  clicking any task anywhere opens it): the task as a big center card (width scales
+  with importance), "Depende de" column on the left, "Bloquea a" on the right (chips
+  navigate the graph, + pickers exclude cycles), remaining options below (estado,
+  fecha, bloque, tipo, importancia, responsables, descripción, checklist).
 - **Wizard** (6 steps): título+objetivos → equipo → plazo → ¿quién eres? → tus fortalezas →
   tareas. Continue button carries a ↵ icon (no "o pulsa Enter" copy). Cloud save happens at
   the final click behind the button (create → claim → strengths → `/p/[code]`), landing on
@@ -115,10 +131,11 @@ project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mec
   `description`**); `groups.strengths` jsonb now holds `{ [memberId]: string[] }` (legacy
   array tolerated on read; `setCloudMemberStrengths` merges server-side).
 - **KNOWN GAP — cloud sync**: `tasks` still has **no `block_id` / `depends_on` /
-  `importance` / `doc_type` columns**. Cloud reads default them (every task lands in the
-  first block) and edits to them are session-only. Next step: migration adding the four
-  columns (+ grants in the cloud-slice style), regenerate/hand-update `database.types.ts`,
-  then flip `mapping.ts` readers/writers (`schemas.ts` already accepts the fields).
+  `importance` / `doc_type` / `map_x` / `map_y` columns**. Cloud reads default them
+  (every task lands in the first block, corkboard auto-lays out) and edits to them are
+  session-only. Next step: migration adding the columns (+ grants in the cloud-slice
+  style), regenerate/hand-update `database.types.ts`, then flip `mapping.ts`
+  readers/writers (`schemas.ts` already accepts the fields).
 
 ## Scope
 

@@ -106,6 +106,9 @@ export function createSeedProject(): Project {
     description: "",
     checklist: [] as ProjectModule["checklist"],
     createdAt: new Date().toISOString(),
+    // Null = the corkboard auto-lays these out by dependency depth.
+    mapX: null,
+    mapY: null,
   };
 
   const modules: ProjectModule[] = [

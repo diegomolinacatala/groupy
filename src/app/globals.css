@@ -208,12 +208,122 @@
   animation: groupy-fade 600ms ease both;
 }
 
+/* ---- Corkboard (Mapa) ------------------------------------------------- */
+
+/*
+  The board is TWO aligned dot grids. The base layer never moves or grows.
+  The halo layer holds bigger, darker dots but is masked to a soft circle
+  that travels WITH the dragged card — so only the dots the card touches
+  swell as it passes, and they settle the moment it moves on. On drop the
+  same layer plays a one-shot expanding ripple at the landing point.
+*/
+.corkboard-dots {
+  background-image: radial-gradient(
+    circle,
+    rgba(29, 28, 23, 0.14) 1.1px,
+    transparent 1.6px
+  );
+  background-size: 26px 26px;
+  background-position: 13px 13px;
+}
+
+/* Registered so the halo radius can transition/animate as a length. */
+@property --halo-r {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+.corkboard-dots-halo {
+  background-image: radial-gradient(
+    circle,
+    rgba(29, 28, 23, 0.3) 2.4px,
+    transparent 2.9px
+  );
+  background-size: 26px 26px;
+  background-position: 13px 13px;
+  -webkit-mask-image: radial-gradient(
+    circle var(--halo-r) at var(--halo-x, 50%) var(--halo-y, 50%),
+    black 52%,
+    transparent 100%
+  );
+  mask-image: radial-gradient(
+    circle var(--halo-r) at var(--halo-x, 50%) var(--halo-y, 50%),
+    black 52%,
+    transparent 100%
+  );
+  transition:
+    --halo-r 200ms var(--ease-out-expo),
+    opacity 160ms ease;
+}
+
+/* Drop: the halo detaches from the card and dissolves outwards. */
+@keyframes groupy-dot-ripple {
+  from {
+    --halo-r: 110px;
+    opacity: 0.9;
+  }
+  to {
+    --halo-r: 260px;
+    opacity: 0;
+  }
+}
+.corkboard-dots-ripple {
+  animation: groupy-dot-ripple 460ms var(--ease-out-expo) forwards;
+}
+
+/* Pick-up: the grabbed card grows a touch and tilts — applied to drag
+   overlays and to the live node while it travels. */
+@keyframes groupy-pick {
+  from {
+    transform: scale(1) rotate(0deg);
+  }
+  to {
+    transform: scale(1.05) rotate(0.9deg);
+  }
+}
+.animate-pick {
+  animation: groupy-pick 200ms var(--ease-out-expo) both;
+}
+
+/* Marching dashes on the live connection line. */
+@keyframes groupy-dash {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+.edge-marching {
+  animation: groupy-dash 480ms linear infinite;
+}
+
+/* One-shot ring when a dependency lands on a node. */
+@keyframes groupy-node-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 0 14px rgba(79, 70, 229, 0);
+  }
+}
+.node-flash {
+  animation: groupy-node-flash 650ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-rise,
   .animate-rise-delayed,
   .animate-fade,
-  .animate-pop-in {
+  .animate-pop-in,
+  .animate-pick,
+  .node-flash {
     animation-duration: 1ms;
     animation-delay: 0ms;
+  }
+  .corkboard-dots-halo,
+  .corkboard-dots-ripple {
+    display: none;
+  }
+  .edge-marching {
+    animation: none;
   }
 }

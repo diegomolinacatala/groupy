@@ -15,31 +15,33 @@ import { cn } from "@/lib/utils/cn";
 /** Diagonal/horizontal px of resize drag per importance step. */
 const RESIZE_STEP_PX = 14;
 
-/** "strip" = content-sized chip (Sin asignar); "column" = full-width card. */
-export type ChipVariant = "strip" | "column";
-
 /** Payload on every sortable chip; container droppables carry `containerId` only. */
 export interface ChipDragData {
   taskId: string;
   containerId: string;
 }
 
+/** Base chip width at default importance — scaled by `importanceScale`. */
+const CHIP_BASE_WIDTH = 150;
+
 function ChipInner({
   module,
   importance,
   color,
-  variant,
   dragging,
 }: {
   module: ProjectModule;
   importance: number;
   color?: MemberColor;
-  variant: ChipVariant;
   dragging?: boolean;
 }) {
   const scale = importanceScale(importance);
   // Importance is rendered purely as size — the number itself never shows.
+  // The chip KEEPS this width wherever it lands (strip or column): size is
+  // information, so it must read the same across containers.
   const style: CSSProperties = {
+    width: Math.round(CHIP_BASE_WIDTH * scale),
+    maxWidth: "100%",
     fontSize: 13 * scale,
     padding: `${6 * scale}px ${11 * scale}px`,
     gap: 7 * scale,
@@ -53,7 +55,6 @@ function ChipInner({
     <span
       className={cn(
         "flex items-center rounded-lg border text-left leading-snug transition-shadow",
-        variant === "column" ? "w-full" : "max-w-72",
         !color && "border-line bg-surface",
         dragging ? "shadow-pop" : "shadow-card",
       )}
@@ -62,9 +63,8 @@ function ChipInner({
       <DocTypeBadge docType={module.docType} />
       <span
         className={cn(
-          "min-w-0 font-medium",
+          "min-w-0 font-medium break-words",
           module.status === "done" ? "text-muted line-through" : "text-ink",
-          variant === "strip" ? "truncate" : "break-words",
         )}
       >
         {module.title || "Sin título"}
@@ -73,23 +73,20 @@ function ChipInner({
   );
 }
 
-/** Overlay/preview chip — no listeners, always in its "lifted" state. */
+/** Overlay/preview chip — no listeners, picked up with the lift animation. */
 export function TaskChipStatic({
   module,
   color,
-  variant,
 }: {
   module: ProjectModule;
   color?: MemberColor;
-  variant: ChipVariant;
 }) {
   return (
-    <span className={cn("block cursor-grabbing", variant === "strip" && "w-fit")}>
+    <span className="animate-pick block w-fit cursor-grabbing">
       <ChipInner
         module={module}
         importance={module.importance}
         color={color}
-        variant={variant}
         dragging
       />
     </span>
@@ -101,7 +98,6 @@ interface SortableTaskChipProps {
   /** "strip" or the member id — sortable ids are `${containerId}::${taskId}`
    *  so a multi-assignee task can appear in several columns at once. */
   containerId: string;
-  variant: ChipVariant;
   color?: MemberColor;
   onOpen: () => void;
   onCommitImportance: (value: number) => void;
@@ -110,7 +106,6 @@ interface SortableTaskChipProps {
 export function SortableTaskChip({
   module,
   containerId,
-  variant,
   color,
   onOpen,
   onCommitImportance,
@@ -183,8 +178,7 @@ export function SortableTaskChip({
       onClick={onOpen}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "group relative block cursor-grab touch-none select-none active:cursor-grabbing",
-        variant === "column" ? "w-full" : "max-w-full",
+        "group relative block max-w-full cursor-grab touch-none select-none active:cursor-grabbing",
         isDragging && "opacity-30",
       )}
     >
@@ -192,7 +186,6 @@ export function SortableTaskChip({
         module={module}
         importance={preview ?? module.importance}
         color={color}
-        variant={variant}
       />
       <span
         onPointerDown={startResize}

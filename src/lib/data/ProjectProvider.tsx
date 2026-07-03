@@ -107,6 +107,12 @@ interface ProjectApi {
   /** Moves the task to another block. */
   setModuleBlock: (moduleId: string, blockId: string) => void;
   setImportance: (moduleId: string, importance: number) => void;
+  /** Free corkboard position (fractions 0–1); null resets to auto-layout. */
+  setModulePosition: (
+    moduleId: string,
+    x: number | null,
+    y: number | null,
+  ) => void;
   /** Rewrites `order` following the given id order (subset allowed). */
   reorderModules: (orderedIds: string[]) => void;
   addBlock: (input?: { name?: string; mode?: ProjectBlock["mode"] }) => string;
@@ -212,6 +218,8 @@ export function ProjectProvider({
         blockId: input.blockId ?? firstBlock?.id ?? null,
         importance: IMPORTANCE_DEFAULT,
         docType: input.docType ?? null,
+        mapX: null,
+        mapY: null,
         order: project.modules.length,
         createdAt: new Date().toISOString(),
       };
@@ -264,6 +272,12 @@ export function ProjectProvider({
 
     setImportance: (moduleId, importance) => {
       applyModulePatch(moduleId, { importance: clampImportance(importance) });
+    },
+
+    setModulePosition: (moduleId, x, y) => {
+      const clamp = (v: number | null) =>
+        v === null ? null : Math.min(1, Math.max(0, v));
+      applyModulePatch(moduleId, { mapX: clamp(x), mapY: clamp(y) });
     },
 
     reorderModules: (orderedIds) => {

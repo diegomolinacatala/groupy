@@ -18,11 +18,12 @@ import type { CreateProjectInput } from "./schemas";
 // mode). No new columns needed, and the create RPC passes them through.
 //
 // KNOWN GAP (extends the pre-redesign one): `tasks` has no columns for
-// `block_id` / `depends_on` / `importance` / `doc_type` yet. Cloud projects
-// read defaults for those (every task lands in the first block) and edits to
-// them are NOT mirrored — local/session state only. Next step: a migration
-// adding the four columns (+ grants in the cloud-slice style), regenerate
-// `database.types.ts`, then flip the readers/writers below.
+// `block_id` / `depends_on` / `importance` / `doc_type` / `map_x` / `map_y`
+// yet. Cloud projects read defaults for those (every task lands in the first
+// block, corkboard auto-lays out) and edits to them are NOT mirrored —
+// local/session state only. Next step: a migration adding the columns
+// (+ grants in the cloud-slice style), regenerate `database.types.ts`, then
+// flip the readers/writers below.
 
 /** timestamptz / date column → the prototype's "yyyy-mm-dd" (null-safe). */
 function toIsoDate(value: string | null): string | null {
@@ -77,6 +78,8 @@ export function taskRowToModule(row: Tables<"tasks">): ProjectModule {
     blockId: null,
     importance: IMPORTANCE_DEFAULT,
     docType: null,
+    mapX: null,
+    mapY: null,
     order: row.sort_order,
     createdAt: row.created_at,
   };

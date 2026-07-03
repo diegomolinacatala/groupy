@@ -66,6 +66,8 @@ export function buildProjectPlan(answers: SetupAnswers): Project {
       blockId,
       importance: IMPORTANCE_DEFAULT,
       docType: null,
+      mapX: null,
+      mapY: null,
       order,
       createdAt: now,
     }));

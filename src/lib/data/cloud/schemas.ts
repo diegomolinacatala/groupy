@@ -48,6 +48,8 @@ export const projectModuleSchema = z.object({
     .enum(["doc", "slides", "sheet", "pdf", "code", "image"])
     .nullable()
     .default(null),
+  mapX: z.number().min(0).max(1).nullable().default(null),
+  mapY: z.number().min(0).max(1).nullable().default(null),
   order: z.number().int().min(0).max(100_000),
   createdAt: z.iso.datetime(),
 });

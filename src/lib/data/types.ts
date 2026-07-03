@@ -70,6 +70,13 @@ export interface ProjectModule {
   /** 1–10. Shown as size in the Organización view, edited by resizing. */
   importance: number;
   docType: TaskDocType | null;
+  /**
+   * Free position on the block's corkboard (Mapa), stored as fractions of
+   * the board (0–1) so placement survives resizes. Null = auto-layout by
+   * dependency depth until the task is first dragged.
+   */
+  mapX: number | null;
+  mapY: number | null;
   order: number;
   createdAt: string; // ISO
 }

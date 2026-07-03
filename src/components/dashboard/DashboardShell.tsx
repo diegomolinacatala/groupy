@@ -12,7 +12,7 @@ import { CalendarView } from "@/components/calendar/CalendarView";
 import { BoardView } from "@/components/board/BoardView";
 import { TeamView } from "@/components/team/TeamView";
 import { StrengthsView } from "@/components/strengths/StrengthsView";
-import { ModuleEditor } from "@/components/module/ModuleEditor";
+import { TaskModal } from "@/components/module/TaskModal";
 
 export function DashboardShell() {
   const { isReady } = useProject();
@@ -35,7 +35,7 @@ export function DashboardShell() {
           {view === "strengths" && <StrengthsView />}
         </main>
       </div>
-      <ModuleEditor />
+      <TaskModal />
     </div>
   );
 }

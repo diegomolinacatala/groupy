@@ -158,7 +158,6 @@ export function OrganizationView() {
         {activeModule && active ? (
           <TaskChipStatic
             module={activeModule}
-            variant={active.containerId === STRIP ? "strip" : "column"}
             color={
               active.containerId === STRIP
                 ? undefined
@@ -209,7 +208,6 @@ function StripZone({
               key={mod.id}
               module={mod}
               containerId={STRIP}
-              variant="strip"
               onOpen={() => onOpen(mod.id)}
               onCommitImportance={(v) => onCommitImportance(mod.id, v)}
             />
@@ -279,7 +277,6 @@ function MemberColumn({
               key={mod.id}
               module={mod}
               containerId={member.id}
-              variant="column"
               color={color}
               onOpen={() => onOpen(mod.id)}
               onCommitImportance={(v) => onCommitImportance(mod.id, v)}

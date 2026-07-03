@@ -44,6 +44,8 @@ function normalizeProject(parsed: Project): Project {
           ? clampImportance(m.importance)
           : IMPORTANCE_DEFAULT,
       docType: typeof m.docType === "string" ? m.docType : null,
+      mapX: typeof m.mapX === "number" ? Math.min(1, Math.max(0, m.mapX)) : null,
+      mapY: typeof m.mapY === "number" ? Math.min(1, Math.max(0, m.mapY)) : null,
     })),
   };
 }
