@@ -3,11 +3,13 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
 export type DashboardView =
+  | "flow"
+  | "map"
+  | "overview"
   | "calendar"
   | "board"
   | "team"
-  | "strengths"
-  | "overview";
+  | "strengths";
 
 interface DashboardUi {
   view: DashboardView;
@@ -16,6 +18,10 @@ interface DashboardUi {
   editingModuleId: string | null;
   openModule: (id: string) => void;
   closeModule: () => void;
+
+  /** Member the flow/map views focus on; null = todo el equipo. */
+  focusMemberId: string | null;
+  setFocusMemberId: (id: string | null) => void;
 
   year: number;
   month: number; // 0-indexed
@@ -26,9 +32,19 @@ interface DashboardUi {
 const DashboardUiContext = createContext<DashboardUi | null>(null);
 
 // Memoization is handled by the React Compiler — no manual useMemo/useCallback.
-export function DashboardUiProvider({ children }: { children: ReactNode }) {
-  const [view, setView] = useState<DashboardView>("calendar");
+export function DashboardUiProvider({
+  children,
+  initialFocusMemberId = null,
+}: {
+  children: ReactNode;
+  /** Cloud dashboards pass the claimed member so the flow opens "as you". */
+  initialFocusMemberId?: string | null;
+}) {
+  const [view, setView] = useState<DashboardView>("flow");
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
+  const [focusMemberId, setFocusMemberId] = useState<string | null>(
+    initialFocusMemberId,
+  );
   const [cursor, setCursor] = useState(() => {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() };
@@ -40,6 +56,8 @@ export function DashboardUiProvider({ children }: { children: ReactNode }) {
     editingModuleId,
     openModule: (id) => setEditingModuleId(id),
     closeModule: () => setEditingModuleId(null),
+    focusMemberId,
+    setFocusMemberId,
     year: cursor.year,
     month: cursor.month,
     setMonth: (year, month) => setCursor({ year, month }),

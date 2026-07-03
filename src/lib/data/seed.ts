@@ -52,9 +52,21 @@ export function createSeedProject(): Project {
 
   const members = [alba, bruno, carla, diego];
 
+  // Ids up-front so the flow chain (dependsOn / deliverableId) can reference
+  // them. The demo shows both dependency kinds: direct task→task locks and
+  // sequential entrega blocks (kickoff → intermedia → final).
+  const kickoffId = uid();
+  const biblioId = uid();
+  const identidadId = uid();
+  const prototipoId = uid();
+  const intermediaId = uid();
+  const memoriaId = uid();
+  const ensayoId = uid();
+  const finalId = uid();
+
   const modules: ProjectModule[] = [
     {
-      id: uid(),
+      id: kickoffId,
       title: "Definir el tema y la pregunta de investigación",
       description:
         "Reunión inicial para acotar el alcance y repartir responsabilidades.",
@@ -67,11 +79,13 @@ export function createSeedProject(): Project {
         { id: uid(), text: "Elegir tema", done: true },
         { id: uid(), text: "Redactar pregunta", done: true },
       ],
+      dependsOn: [],
+      deliverableId: null,
       order: 0,
       createdAt: new Date().toISOString(),
     },
     {
-      id: uid(),
+      id: biblioId,
       title: "Revisión bibliográfica",
       description: "Buscar y resumir 8-10 fuentes fiables.",
       type: "task",
@@ -82,11 +96,13 @@ export function createSeedProject(): Project {
         { id: uid(), text: "Buscar fuentes", done: true },
         { id: uid(), text: "Fichas de lectura", done: false },
       ],
+      dependsOn: [],
+      deliverableId: intermediaId,
       order: 1,
       createdAt: new Date().toISOString(),
     },
     {
-      id: uid(),
+      id: identidadId,
       title: "Diseñar la identidad visual",
       description: "Paleta, tipografía y plantilla de diapositivas.",
       type: "task",
@@ -97,11 +113,13 @@ export function createSeedProject(): Project {
         { id: uid(), text: "Moodboard", done: true },
         { id: uid(), text: "Plantilla", done: false },
       ],
+      dependsOn: [],
+      deliverableId: intermediaId,
       order: 2,
       createdAt: new Date().toISOString(),
     },
     {
-      id: uid(),
+      id: prototipoId,
       title: "Prototipo funcional",
       description: "Primera versión navegable de la demo.",
       type: "task",
@@ -109,11 +127,13 @@ export function createSeedProject(): Project {
       dueDate: relDate(5),
       assigneeIds: [diego.id, carla.id],
       checklist: [],
+      dependsOn: [identidadId],
+      deliverableId: intermediaId,
       order: 3,
       createdAt: new Date().toISOString(),
     },
     {
-      id: uid(),
+      id: intermediaId,
       title: "Entrega intermedia",
       description: "Subir avance y recibir feedback del profesor.",
       type: "milestone",
@@ -121,11 +141,13 @@ export function createSeedProject(): Project {
       dueDate: relDate(9),
       assigneeIds: members.map((m) => m.id),
       checklist: [],
+      dependsOn: [],
+      deliverableId: null,
       order: 4,
       createdAt: new Date().toISOString(),
     },
     {
-      id: uid(),
+      id: memoriaId,
       title: "Redactar la memoria final",
       description: "Documento completo con conclusiones y referencias.",
       type: "task",
@@ -133,11 +155,13 @@ export function createSeedProject(): Project {
       dueDate: relDate(16),
       assigneeIds: [alba.id, bruno.id],
       checklist: [],
+      dependsOn: [biblioId],
+      deliverableId: finalId,
       order: 5,
       createdAt: new Date().toISOString(),
     },
     {
-      id: uid(),
+      id: ensayoId,
       title: "Ensayo de la presentación",
       description: "Repartir turnos y cronometrar.",
       type: "objective",
@@ -145,11 +169,13 @@ export function createSeedProject(): Project {
       dueDate: relDate(20),
       assigneeIds: members.map((m) => m.id),
       checklist: [],
+      dependsOn: [prototipoId],
+      deliverableId: finalId,
       order: 6,
       createdAt: new Date().toISOString(),
     },
     {
-      id: uid(),
+      id: finalId,
       title: "Entrega final",
       description: "Presentación en clase y subida del proyecto.",
       type: "milestone",
@@ -157,6 +183,8 @@ export function createSeedProject(): Project {
       dueDate: relDate(23),
       assigneeIds: members.map((m) => m.id),
       checklist: [],
+      dependsOn: [],
+      deliverableId: null,
       order: 7,
       createdAt: new Date().toISOString(),
     },

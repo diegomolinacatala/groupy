@@ -16,6 +16,7 @@ interface BoardColumnProps {
   status: ModuleStatus;
   modules: ProjectModule[];
   members: TeamMember[];
+  lockedIds: Set<string>;
   onOpenModule: (id: string) => void;
   onAdd: (status: ModuleStatus) => void;
 }
@@ -24,6 +25,7 @@ export function BoardColumn({
   status,
   modules,
   members,
+  lockedIds,
   onOpenModule,
   onAdd,
 }: BoardColumnProps) {
@@ -63,6 +65,7 @@ export function BoardColumn({
             key={module.id}
             module={module}
             members={members}
+            locked={lockedIds.has(module.id)}
             onOpen={() => onOpenModule(module.id)}
           />
         ))}

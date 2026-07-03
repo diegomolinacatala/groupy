@@ -7,6 +7,22 @@ import { createSeedProject } from "./seed";
 
 const STORAGE_KEY = "groupy:project:v1";
 
+/**
+ * Backfills fields added after a payload was stored (e.g. the flow fields
+ * `dependsOn` / `deliverableId`) so older local projects keep working
+ * without bumping the storage key.
+ */
+function normalizeProject(parsed: Project): Project {
+  return {
+    ...parsed,
+    modules: parsed.modules.map((m) => ({
+      ...m,
+      dependsOn: Array.isArray(m.dependsOn) ? m.dependsOn : [],
+      deliverableId: typeof m.deliverableId === "string" ? m.deliverableId : null,
+    })),
+  };
+}
+
 /** Whether a project has already been created / seeded on this device. */
 export function hasStoredProject(): boolean {
   if (typeof window === "undefined") return false;
@@ -30,7 +46,7 @@ export function loadProject(): Project {
     if (!parsed || !Array.isArray(parsed.modules)) {
       throw new Error("Malformed project payload");
     }
-    return parsed;
+    return normalizeProject(parsed);
   } catch {
     // Corrupt or incompatible payload — reset to a fresh seed rather than crash.
     const seeded = createSeedProject();

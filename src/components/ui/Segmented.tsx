@@ -5,6 +5,9 @@ import { cn } from "@/lib/utils/cn";
 interface SegmentedOption<T extends string> {
   value: T;
   label: string;
+  disabled?: boolean;
+  /** Tooltip explaining why the option is disabled. */
+  disabledReason?: string;
 }
 
 interface SegmentedProps<T extends string> {
@@ -36,12 +39,16 @@ export function Segmented<T extends string>({
           <button
             key={option.value}
             type="button"
+            disabled={option.disabled}
+            title={option.disabled ? option.disabledReason : undefined}
             onClick={() => onChange(option.value)}
             className={cn(
               "rounded-lg px-3 py-1.5 font-medium transition-colors duration-150",
               active
                 ? "bg-surface text-ink shadow-card"
                 : "text-muted hover:text-ink",
+              option.disabled &&
+                "cursor-not-allowed text-muted-2 hover:text-muted-2",
             )}
           >
             {option.label}

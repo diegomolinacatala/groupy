@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, UserPlus, X } from "lucide-react";
+import { Lock, Plus, Trash2, UserPlus, X } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
+import { buildProjectFlow } from "@/lib/data/flow";
 import { SlideOver } from "@/components/ui/SlideOver";
 import { InlineText } from "@/components/ui/InlineText";
 import { Segmented } from "@/components/ui/Segmented";
@@ -13,6 +14,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { IconButton } from "@/components/ui/IconButton";
 import { AssigneePicker } from "@/components/ui/AssigneePicker";
+import { DeliverableField } from "./DeliverableField";
+import { DependencyField } from "./DependencyField";
 import {
   MODULE_TYPE_META,
   type ModuleStatus,
@@ -22,7 +25,7 @@ import { cn } from "@/lib/utils/cn";
 
 const TYPE_OPTIONS: { value: ModuleType; label: string }[] = [
   { value: "task", label: "Tarea" },
-  { value: "milestone", label: "Hito" },
+  { value: "milestone", label: "Entrega" },
   { value: "objective", label: "Objetivo" },
 ];
 
@@ -38,6 +41,8 @@ export function ModuleEditor() {
     updateModule,
     deleteModule,
     toggleAssignee,
+    toggleDependency,
+    setDeliverable,
     addChecklistItem,
     updateChecklistItem,
     deleteChecklistItem,
@@ -48,6 +53,14 @@ export function ModuleEditor() {
   const activeModule =
     project.modules.find((m) => m.id === editingModuleId) ?? null;
   const open = Boolean(activeModule);
+
+  // Derived flow state: is this module locked, and by what?
+  const flowEntry = activeModule
+    ? buildProjectFlow(project).byId.get(activeModule.id) ?? null
+    : null;
+  const isLocked = flowEntry?.state === "locked";
+  const derivedBlockers =
+    flowEntry?.requires.filter((l) => l.kind !== "direct") ?? [];
 
   const handleDelete = () => {
     if (!activeModule) return;
@@ -102,6 +115,25 @@ export function ModuleEditor() {
               className="-ml-1.5 text-lg font-semibold"
             />
 
+            {isLocked && flowEntry && (
+              <div
+                className="mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
+                style={{
+                  backgroundColor: "var(--color-progress-soft)",
+                  color: "var(--color-progress)",
+                }}
+              >
+                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  <strong className="font-semibold">Bloqueada.</strong> Esperando
+                  a:{" "}
+                  {flowEntry.blockers
+                    .map((b) => `«${b.module.title || "Sin título"}»`)
+                    .join(", ")}
+                </span>
+              </div>
+            )}
+
             <div className="mt-4 flex flex-col gap-4">
               <Field label="Tipo">
                 <Segmented
@@ -114,7 +146,17 @@ export function ModuleEditor() {
 
               <Field label="Estado">
                 <Segmented
-                  options={STATUS_OPTIONS}
+                  options={STATUS_OPTIONS.map((option) => ({
+                    ...option,
+                    // The padlock: a locked module can't move forward until
+                    // its prerequisites are done (going back is always fine).
+                    disabled:
+                      isLocked &&
+                      option.value !== "todo" &&
+                      option.value !== activeModule.status,
+                    disabledReason:
+                      "Bloqueada: completa antes sus dependencias",
+                  }))}
                   value={activeModule.status}
                   onChange={(status) =>
                     updateModule(activeModule.id, { status })
@@ -132,6 +174,37 @@ export function ModuleEditor() {
                   ariaLabel="Fecha de entrega del módulo"
                   className="w-full"
                 />
+              </Field>
+
+              {activeModule.type !== "milestone" && (
+                <Field label="Entrega">
+                  <DeliverableField
+                    project={project}
+                    module={activeModule}
+                    onChange={(deliverableId) =>
+                      setDeliverable(activeModule.id, deliverableId)
+                    }
+                  />
+                </Field>
+              )}
+
+              <Field label="Depende de">
+                <DependencyField
+                  project={project}
+                  module={activeModule}
+                  onToggle={(depId) =>
+                    toggleDependency(activeModule.id, depId)
+                  }
+                />
+                {derivedBlockers.length > 0 && (
+                  <p className="mt-1.5 text-xs text-muted-2">
+                    {activeModule.type === "milestone"
+                      ? `Además, esta entrega espera a sus ${derivedBlockers.length} tareas asignadas.`
+                      : `Además espera a la entrega anterior: «${
+                          derivedBlockers[0].module.title || "Sin título"
+                        }».`}
+                  </p>
+                )}
               </Field>
 
               <Field label="Responsables">

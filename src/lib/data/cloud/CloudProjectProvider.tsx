@@ -30,7 +30,14 @@ export function CloudProjectProvider({
   }, []);
 
   return (
-    <ProjectProvider cloud={{ project, joinCode: ctx.joinCode, mirror }}>
+    <ProjectProvider
+      cloud={{
+        project,
+        joinCode: ctx.joinCode,
+        currentMemberId: ctx.memberId,
+        mirror,
+      }}
+    >
       {children}
     </ProjectProvider>
   );

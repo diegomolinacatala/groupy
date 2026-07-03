@@ -31,6 +31,17 @@ export interface ProjectModule {
   dueDate: string | null; // "yyyy-mm-dd"
   assigneeIds: string[];
   checklist: ChecklistItem[];
+  /**
+   * Direct dependencies ("candado"): ids of modules that must be done before
+   * this one unlocks. The derived lock/unlock semantics live in `flow.ts`.
+   */
+  dependsOn: string[];
+  /**
+   * Entrega (deliverable block) this module belongs to: the id of a module of
+   * type "milestone". Blocks are the second, separate dependency kind — see
+   * `flow.ts` for the gating rules. Always null on milestones themselves.
+   */
+  deliverableId: string | null;
   order: number;
   createdAt: string; // ISO
 }
@@ -54,7 +65,9 @@ export const MODULE_TYPE_META: Record<
 > = {
   task: { label: "Tarea", color: "var(--color-task)", soft: "var(--color-task-soft)" },
   milestone: {
-    label: "Hito",
+    // Milestones double as "entregas": the ordered blocks that group tasks
+    // into dependency stages (see flow.ts).
+    label: "Entrega",
     color: "var(--color-milestone)",
     soft: "var(--color-milestone-soft)",
   },

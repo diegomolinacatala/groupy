@@ -5,7 +5,7 @@ import { Plus, RotateCcw } from "lucide-react";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { cn } from "@/lib/utils/cn";
-import { NAV } from "./nav";
+import { NAV_GROUPS } from "./nav";
 
 export function Sidebar() {
   const { view, setView } = useDashboardUi();
@@ -34,29 +34,38 @@ export function Sidebar() {
       </div>
 
       <nav className="mt-5 flex flex-1 flex-col gap-0.5 px-3">
-        {NAV.map((item) => {
-          const active = view === item.view;
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.view}
-              type="button"
-              onClick={() => setView(item.view)}
-              className={cn(
-                "flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors duration-150",
-                active
-                  ? "bg-surface-2 font-medium text-ink"
-                  : "text-muted hover:bg-surface-2/60 hover:text-ink-2",
-              )}
-            >
-              <Icon
-                className={cn("h-[18px] w-[18px]", active && "text-accent")}
-                strokeWidth={2}
-              />
-              {item.label}
-            </button>
-          );
-        })}
+        {NAV_GROUPS.map((group, groupIndex) => (
+          <div key={groupIndex} className="flex flex-col gap-0.5">
+            {group.title && (
+              <span className="type-overline mt-5 mb-1 px-3">
+                {group.title}
+              </span>
+            )}
+            {group.items.map((item) => {
+              const active = view === item.view;
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.view}
+                  type="button"
+                  onClick={() => setView(item.view)}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors duration-150",
+                    active
+                      ? "bg-surface-2 font-medium text-ink"
+                      : "text-muted hover:bg-surface-2/60 hover:text-ink-2",
+                  )}
+                >
+                  <Icon
+                    className={cn("h-[18px] w-[18px]", active && "text-accent")}
+                    strokeWidth={2}
+                  />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="border-t border-line px-4 py-4">

@@ -9,7 +9,7 @@ import { AvatarStack } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { Badge } from "@/components/ui/Badge";
-import { NAV } from "./nav";
+import { NAV_ITEMS } from "./nav";
 import { cn } from "@/lib/utils/cn";
 import { formatShort } from "@/lib/utils/dates";
 import {
@@ -43,7 +43,7 @@ export function Topbar() {
     <header className="shrink-0 border-b border-line bg-surface/80 backdrop-blur">
       {/* Mobile view switcher (sidebar is hidden below md) */}
       <div className="flex gap-1 overflow-x-auto border-b border-line px-3 py-2 md:hidden">
-        {NAV.map((item) => (
+        {NAV_ITEMS.map((item) => (
           <button
             key={item.view}
             type="button"

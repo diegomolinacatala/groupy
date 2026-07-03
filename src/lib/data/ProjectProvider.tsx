@@ -17,6 +17,7 @@ import type {
 } from "./types";
 import { projectReducer } from "./reducer";
 import { loadProject, saveProject, resetProject } from "./store";
+import { wouldCreateCycle } from "./flow";
 import { nextMemberColorKey } from "@/lib/utils/colors";
 
 const PLACEHOLDER: Project = {
@@ -36,6 +37,8 @@ export interface NewModuleInput {
   title?: string;
   type?: ModuleType;
   dueDate?: string | null;
+  /** Pre-assign the new module to an entrega (used by the flow view). */
+  deliverableId?: string | null;
 }
 
 export interface NewMemberInput {
@@ -70,6 +73,8 @@ export interface CloudBinding {
   /** Server-loaded snapshot; the reducer takes over from here. */
   project: Project;
   joinCode: string;
+  /** The group_members row claimed by this browser's anonymous session. */
+  currentMemberId: string | null;
   mirror: ProjectMirror;
 }
 
@@ -82,6 +87,10 @@ interface ProjectApi {
   moveModuleToDate: (id: string, dueDate: string | null) => void;
   setModuleStatus: (id: string, status: ModuleStatus) => void;
   toggleAssignee: (moduleId: string, memberId: string) => void;
+  /** Adds/removes a direct dependency; silently refuses cycles. */
+  toggleDependency: (moduleId: string, depId: string) => void;
+  /** Assigns the module to an entrega (milestone id) or clears it. */
+  setDeliverable: (moduleId: string, deliverableId: string | null) => void;
   addChecklistItem: (moduleId: string, text: string) => void;
   updateChecklistItem: (
     moduleId: string,
@@ -101,6 +110,8 @@ interface ProjectContextValue extends ProjectApi {
   /** "local" = localStorage demo, "cloud" = Supabase-backed shared project. */
   mode: "local" | "cloud";
   joinCode: string | null;
+  /** Member claimed by this session (cloud mode); null in the local demo. */
+  currentMemberId: string | null;
 }
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -152,15 +163,19 @@ export function ProjectProvider({
     },
 
     addModule: (input = {}) => {
+      const type = input.type ?? "task";
       const newModule: ProjectModule = {
         id: crypto.randomUUID(),
         title: input.title ?? "",
         description: "",
-        type: input.type ?? "task",
+        type,
         status: "todo",
         dueDate: input.dueDate ?? null,
         assigneeIds: [],
         checklist: [],
+        dependsOn: [],
+        // Milestones ARE entregas, they never belong to one.
+        deliverableId: type === "milestone" ? null : input.deliverableId ?? null,
         order: project.modules.length,
         createdAt: new Date().toISOString(),
       };
@@ -169,7 +184,13 @@ export function ProjectProvider({
       return newModule.id;
     },
 
-    updateModule: applyModulePatch,
+    updateModule: (id, patch) => {
+      // Turning a module into a milestone (an entrega) detaches it from any
+      // block it belonged to — blocks can't be nested.
+      const merged =
+        patch.type === "milestone" ? { ...patch, deliverableId: null } : patch;
+      applyModulePatch(id, merged);
+    },
     deleteModule: (id) => {
       dispatch({ type: "DELETE_MODULE", id });
       mirror?.deleteModule(id);
@@ -184,6 +205,26 @@ export function ProjectProvider({
         ? mod.assigneeIds.filter((a) => a !== memberId)
         : [...mod.assigneeIds, memberId];
       applyModulePatch(moduleId, { assigneeIds });
+    },
+
+    toggleDependency: (moduleId, depId) => {
+      const mod = findModule(moduleId);
+      if (!mod || moduleId === depId) return;
+      if (mod.dependsOn.includes(depId)) {
+        applyModulePatch(moduleId, {
+          dependsOn: mod.dependsOn.filter((d) => d !== depId),
+        });
+        return;
+      }
+      // Belt and braces: the picker already hides cyclic candidates.
+      if (wouldCreateCycle(project, moduleId, depId)) return;
+      applyModulePatch(moduleId, { dependsOn: [...mod.dependsOn, depId] });
+    },
+
+    setDeliverable: (moduleId, deliverableId) => {
+      const mod = findModule(moduleId);
+      if (!mod || mod.type === "milestone") return;
+      applyModulePatch(moduleId, { deliverableId });
     },
 
     addChecklistItem: (moduleId, text) => {
@@ -260,6 +301,7 @@ export function ProjectProvider({
     isReady,
     mode: isCloud ? "cloud" : "local",
     joinCode: cloud?.joinCode ?? null,
+    currentMemberId: cloud?.currentMemberId ?? null,
     ...api,
   };
 

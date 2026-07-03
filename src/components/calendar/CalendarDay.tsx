@@ -12,6 +12,7 @@ interface CalendarDayProps {
   inMonth: boolean;
   isToday: boolean;
   modules: ProjectModule[];
+  lockedIds: Set<string>;
   onOpenModule: (id: string) => void;
   onQuickAdd: (iso: string) => void;
 }
@@ -22,6 +23,7 @@ export function CalendarDay({
   inMonth,
   isToday,
   modules,
+  lockedIds,
   onOpenModule,
   onQuickAdd,
 }: CalendarDayProps) {
@@ -67,6 +69,7 @@ export function CalendarDay({
           <ModuleChip
             key={module.id}
             module={module}
+            locked={lockedIds.has(module.id)}
             onOpen={() => onOpenModule(module.id)}
           />
         ))}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useDraggable } from "@dnd-kit/core";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, Lock } from "lucide-react";
 import { AvatarStack } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import {
@@ -16,10 +16,12 @@ function CardInner({
   module,
   members,
   dragging,
+  locked,
 }: {
   module: ProjectModule;
   members: TeamMember[];
   dragging?: boolean;
+  locked?: boolean;
 }) {
   const meta = MODULE_TYPE_META[module.type];
   const assignees = members.filter((m) => module.assigneeIds.includes(m.id));
@@ -30,22 +32,34 @@ function CardInner({
   return (
     <div
       className={cn(
-        "rounded-xl border border-line bg-surface p-3 text-left transition-shadow",
-        dragging ? "shadow-pop" : "shadow-card hover:border-line-strong",
+        "rounded-xl border p-3 text-left transition-shadow",
+        locked
+          ? "border-dashed border-line-strong bg-surface-2/40"
+          : "border-line bg-surface",
+        dragging ? "shadow-pop" : !locked && "shadow-card hover:border-line-strong",
       )}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
         <Badge label={meta.label} color={meta.color} soft={meta.soft} />
-        {module.checklist.length > 0 && (
-          <span className="shrink-0 text-xs text-muted">
-            {doneItems}/{module.checklist.length}
-          </span>
-        )}
+        <span className="flex items-center gap-1.5">
+          {module.checklist.length > 0 && (
+            <span className="shrink-0 text-xs text-muted">
+              {doneItems}/{module.checklist.length}
+            </span>
+          )}
+          {locked && (
+            <Lock
+              className="h-3.5 w-3.5 shrink-0 text-muted"
+              aria-label="Bloqueada por dependencias"
+            />
+          )}
+        </span>
       </div>
       <p
         className={cn(
-          "text-sm font-medium leading-snug text-ink",
+          "text-sm font-medium leading-snug",
           module.status === "done" && "text-muted line-through",
+          locked ? "text-ink-2" : "text-ink",
         )}
       >
         {module.title || "Sin título"}
@@ -73,20 +87,23 @@ function CardInner({
 export function ModuleCardStatic({
   module,
   members,
+  locked,
 }: {
   module: ProjectModule;
   members: TeamMember[];
+  locked?: boolean;
 }) {
-  return <CardInner module={module} members={members} dragging />;
+  return <CardInner module={module} members={members} locked={locked} dragging />;
 }
 
 interface ModuleCardProps {
   module: ProjectModule;
   members: TeamMember[];
+  locked?: boolean;
   onOpen: () => void;
 }
 
-export function ModuleCard({ module, members, onOpen }: ModuleCardProps) {
+export function ModuleCard({ module, members, locked, onOpen }: ModuleCardProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: module.id,
     data: { type: "module" },
@@ -103,7 +120,7 @@ export function ModuleCard({ module, members, onOpen }: ModuleCardProps) {
         isDragging && "opacity-30",
       )}
     >
-      <CardInner module={module} members={members} />
+      <CardInner module={module} members={members} locked={locked} />
     </button>
   );
 }

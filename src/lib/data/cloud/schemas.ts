@@ -30,6 +30,10 @@ export const projectModuleSchema = z.object({
   dueDate: isoDate.nullable(),
   assigneeIds: z.array(z.uuid()).max(20),
   checklist: z.array(checklistItemSchema).max(100),
+  // Flow fields: accepted on the wire but NOT persisted yet (no DB columns —
+  // see taskRowToModule in mapping.ts). Defaults keep old payloads valid.
+  dependsOn: z.array(z.uuid()).max(50).default([]),
+  deliverableId: z.uuid().nullable().default(null),
   order: z.number().int().min(0).max(100_000),
   createdAt: z.iso.datetime(),
 });

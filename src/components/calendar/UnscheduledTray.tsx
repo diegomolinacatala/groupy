@@ -8,11 +8,16 @@ import { cn } from "@/lib/utils/cn";
 
 interface UnscheduledTrayProps {
   modules: ProjectModule[];
+  lockedIds: Set<string>;
   onOpenModule: (id: string) => void;
 }
 
 /** Home for date-less modules; also the drop zone to "unschedule" a module. */
-export function UnscheduledTray({ modules, onOpenModule }: UnscheduledTrayProps) {
+export function UnscheduledTray({
+  modules,
+  lockedIds,
+  onOpenModule,
+}: UnscheduledTrayProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: "day:null",
     data: { date: null },
@@ -40,6 +45,7 @@ export function UnscheduledTray({ modules, onOpenModule }: UnscheduledTrayProps)
             <div key={module.id} className="w-44 max-w-full">
               <ModuleChip
                 module={module}
+                locked={lockedIds.has(module.id)}
                 onOpen={() => onOpenModule(module.id)}
               />
             </div>

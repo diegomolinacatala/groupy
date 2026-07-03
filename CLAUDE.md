@@ -43,13 +43,14 @@ Supabase Anonymous Auth creates a persistent per-device session; the student onl
 `display_name` + `email` as profile data on their `group_members` row. RLS then works via
 `auth.uid()` for both roles — no parallel token system.
 
-## Current state (updated 2026-07-02, cloud slice shipped)
+## Current state (updated 2026-07-03, task-flow redesign shipped)
 
 Two layers exist side by side:
 
 1. **Local prototype — demo mode, kept (locked decision).** A Spanish, zero-login dashboard
-   (calendar / board / team / strengths / overview) backed entirely by `localStorage`
-   (`src/lib/data/`, seeded with dummy data). Lives at `/dashboard`, untouched.
+   backed entirely by `localStorage` (`src/lib/data/`, seeded with dummy data). Lives at
+   `/dashboard`. **Primary views are now Flujo ("Tareas") and Mapa** — calendar and board
+   were demoted to secondary views (grouped under "Más vistas" in the sidebar).
 2. **Cloud slice — LIVE end to end.** Create → share code → anonymous join → shared dashboard:
    - **Migrations pushed** (region `eu-west-1`): `20260702101232_schema_foundation.sql` (9 tables,
      full RLS matrix, `app.*` helpers) + `20260702150000_cloud_slice.sql`. The second one:
@@ -75,6 +76,30 @@ Two layers exist side by side:
    - **Anonymous sign-ins are enabled** in the hosted dashboard (prerequisite satisfied).
    - `database.types.ts` is still **hand-authored** (regenerating needs `npx supabase login`, or a
      local Docker daemon for `--db-url`); keep it in sync when migrating.
+
+### Task flow (dependencies + entregas) — shipped 2026-07-03
+
+The calendar-first UX was replaced by a **task-flow model** with two SEPARATE dependency kinds
+(engine: `src/lib/data/flow.ts`, pure functions, deliberately easy to edit):
+
+- **Direct deps ("candado")** — `ProjectModule.dependsOn: string[]`; a module is *locked* until
+  every prerequisite is `done`. Cycles are prevented at edit time (`wouldCreateCycle`).
+- **Entregas (deliverable blocks)** — modules of type `milestone` (UI label renamed
+  "Hito" → **"Entrega"**) act as ordered blocks; `ProjectModule.deliverableId` assigns a task to
+  one. Derived rules: a milestone waits for all its assigned tasks; tasks of entrega N wait for
+  entrega N−1 to be marked done.
+- The lock is **enforced softly in the UI only** (editor status options disabled, board drags to
+  in_progress/done ignored); the reducer never forbids a status change.
+- **Views**: `FlowView` ("Tareas", default) — "disponibles ahora" strip + entrega blocks with
+  advance/deliver actions and a member filter (`focusMemberId`, seeded with the claimed member
+  in cloud mode). `MapView` ("Mapa") — per-member coloured task squares (padlock badge tinted
+  with the colour of whoever is *directly* waiting on that task) + measured-SVG mini flowchart
+  (deps left / dependents right, navigable). Calendar/board/overview show lock icons.
+- **KNOWN GAP — cloud sync**: `tasks` has **no `depends_on` / `deliverable_id` columns yet**.
+  `mapping.ts` reads defaults (`[]` / `null`) and does not write them, so flow edits on `/p/[code]`
+  are session-only and lost on reload. Next step: migration adding both columns (+ column grants
+  matching the cloud-slice style), regenerate/hand-update `database.types.ts`, then flip
+  `mapping.ts` + `toRpcPayload` to persist them (`schemas.ts` already accepts the fields).
 
 ## Scope
 

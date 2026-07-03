@@ -1,7 +1,9 @@
 "use client";
 
+import { Lock } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
+import { lockedModuleIds } from "@/lib/data/flow";
 import { StatCard } from "./StatCard";
 import { InlineText } from "@/components/ui/InlineText";
 import { DateField } from "@/components/ui/DateField";
@@ -39,6 +41,8 @@ export function OverviewView() {
     .filter((m) => m.dueDate && m.status !== "done")
     .sort((a, b) => (a.dueDate! < b.dueDate! ? -1 : 1))
     .slice(0, 6);
+
+  const lockedIds = lockedModuleIds(project);
 
   return (
     <div className="flex h-full flex-col gap-5 p-4 md:p-6">
@@ -210,8 +214,16 @@ export function OverviewView() {
                       soft={meta.soft}
                       dot={false}
                     />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
-                      {module.title || "Sin título"}
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                      {lockedIds.has(module.id) && (
+                        <Lock
+                          className="h-3.5 w-3.5 shrink-0 text-muted"
+                          aria-label="Bloqueada por dependencias"
+                        />
+                      )}
+                      <span className="min-w-0 truncate text-sm font-medium text-ink">
+                        {module.title || "Sin título"}
+                      </span>
                     </span>
                     <span
                       className={cn(

@@ -58,9 +58,24 @@ export function projectReducer(
       });
 
     case "DELETE_MODULE":
+      // Removing a module also detaches it from every dependency edge and
+      // clears entrega assignments that pointed to it.
       return touch({
         ...state,
-        modules: state.modules.filter((m) => m.id !== action.id),
+        modules: state.modules
+          .filter((m) => m.id !== action.id)
+          .map((m) => {
+            const dropsDep = m.dependsOn.includes(action.id);
+            const dropsDeliverable = m.deliverableId === action.id;
+            if (!dropsDep && !dropsDeliverable) return m;
+            return {
+              ...m,
+              dependsOn: dropsDep
+                ? m.dependsOn.filter((d) => d !== action.id)
+                : m.dependsOn,
+              deliverableId: dropsDeliverable ? null : m.deliverableId,
+            };
+          }),
       });
 
     case "ADD_MEMBER":

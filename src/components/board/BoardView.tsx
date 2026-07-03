@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
+import { lockedModuleIds } from "@/lib/data/flow";
 import { BoardColumn } from "./BoardColumn";
 import { ModuleCardStatic } from "./ModuleCard";
 import {
@@ -42,6 +43,8 @@ export function BoardView() {
     return map;
   }, [project.modules]);
 
+  const lockedIds = useMemo(() => lockedModuleIds(project), [project]);
+
   const activeModule = activeId
     ? project.modules.find((m) => m.id === activeId) ?? null
     : null;
@@ -55,9 +58,10 @@ export function BoardView() {
     if (!over) return;
     const status = over.data.current?.status as ModuleStatus | undefined;
     const mod = project.modules.find((m) => m.id === active.id);
-    if (status && mod && mod.status !== status) {
-      setModuleStatus(String(active.id), status);
-    }
+    if (!status || !mod || mod.status === status) return;
+    // Locked modules can't move forward (the padlock); going back is fine.
+    if (lockedIds.has(mod.id) && status !== "todo") return;
+    setModuleStatus(String(active.id), status);
   };
 
   const handleAdd = (status: ModuleStatus) => {
@@ -92,6 +96,7 @@ export function BoardView() {
               status={status}
               modules={byStatus[status]}
               members={project.members}
+              lockedIds={lockedIds}
               onOpenModule={openModule}
               onAdd={handleAdd}
             />
@@ -102,7 +107,11 @@ export function BoardView() {
       <DragOverlay dropAnimation={null}>
         {activeModule ? (
           <div className="w-72 cursor-grabbing">
-            <ModuleCardStatic module={activeModule} members={project.members} />
+            <ModuleCardStatic
+              module={activeModule}
+              members={project.members}
+              locked={lockedIds.has(activeModule.id)}
+            />
           </div>
         ) : null}
       </DragOverlay>

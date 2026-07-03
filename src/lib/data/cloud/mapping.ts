@@ -50,6 +50,12 @@ export function taskRowToModule(row: Tables<"tasks">): ProjectModule {
     dueDate: toIsoDate(row.due_date),
     assigneeIds: row.assignees,
     checklist: jsonToChecklist(row.checklist),
+    // KNOWN GAP: the flow fields have no DB columns yet (pending migration:
+    // depends_on uuid[] + deliverable_id uuid on tasks). Until it lands and
+    // database.types.ts is regenerated, cloud projects read empty flow data
+    // and edits to it are NOT mirrored — local/session state only.
+    dependsOn: [],
+    deliverableId: null,
     order: row.sort_order,
     createdAt: row.created_at,
   };
@@ -115,6 +121,7 @@ export function moduleToTaskRow(
     created_at: module.createdAt,
     // done_at is deliberately absent: a DB trigger stamps/clears it on status
     // transitions so clients can't forge completion times.
+    // dependsOn / deliverableId are absent too — see taskRowToModule.
   };
 }
 

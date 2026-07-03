@@ -13,6 +13,7 @@ import {
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
+import { lockedModuleIds } from "@/lib/data/flow";
 import { IconButton } from "@/components/ui/IconButton";
 import { Button } from "@/components/ui/Button";
 import { CalendarDay } from "./CalendarDay";
@@ -57,6 +58,8 @@ export function CalendarView() {
     }
     return { byDate: map, unscheduled: none };
   }, [project.modules]);
+
+  const lockedIds = useMemo(() => lockedModuleIds(project), [project]);
 
   const activeModule = activeId
     ? project.modules.find((m) => m.id === activeId) ?? null
@@ -122,7 +125,11 @@ export function CalendarView() {
           </Button>
         </div>
 
-        <UnscheduledTray modules={unscheduled} onOpenModule={openModule} />
+        <UnscheduledTray
+          modules={unscheduled}
+          lockedIds={lockedIds}
+          onOpenModule={openModule}
+        />
 
         <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
           <div className="grid grid-cols-7 border-b border-line">
@@ -146,6 +153,7 @@ export function CalendarView() {
                   inMonth={date.getMonth() === month}
                   isToday={iso === today}
                   modules={byDate.get(iso) ?? []}
+                  lockedIds={lockedIds}
                   onOpenModule={openModule}
                   onQuickAdd={handleQuickAdd}
                 />
@@ -158,7 +166,10 @@ export function CalendarView() {
       <DragOverlay dropAnimation={null}>
         {activeModule ? (
           <div className="w-44 cursor-grabbing">
-            <ModuleChipStatic module={activeModule} />
+            <ModuleChipStatic
+              module={activeModule}
+              locked={lockedIds.has(activeModule.id)}
+            />
           </div>
         ) : null}
       </DragOverlay>

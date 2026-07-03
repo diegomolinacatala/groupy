@@ -21,16 +21,23 @@ export interface SetupAnswers {
 }
 
 interface PhaseTemplate {
+  /** Stable key so other phases can reference this one in the flow chain. */
+  key: string;
   at: number; // fraction of the timeline, 0 = start, 1 = due date
   type: ModuleType;
   title: string;
   description: string;
   assign: "all" | "rotate";
   checklist?: string[];
+  /** Direct dependencies (keys of earlier phases) — the padlock chain. */
+  dependsOn?: string[];
+  /** Entrega block this phase belongs to (key of a milestone phase). */
+  deliverable?: string;
 }
 
 const PHASES: PhaseTemplate[] = [
   {
+    key: "arranque",
     at: 0,
     type: "milestone",
     title: "Reunión de arranque",
@@ -44,28 +51,37 @@ const PHASES: PhaseTemplate[] = [
     ],
   },
   {
+    key: "investigacion",
     at: 0.12,
     type: "task",
     title: "Investigación y fuentes",
     description: "Reunid y resumid las fuentes principales del trabajo.",
     assign: "rotate",
+    deliverable: "intermedia",
   },
   {
+    key: "esquema",
     at: 0.25,
     type: "task",
     title: "Esquema del trabajo",
     description:
       "Índice y estructura: qué secciones habrá y quién se encarga de cada una.",
     assign: "rotate",
+    dependsOn: ["investigacion"],
+    deliverable: "intermedia",
   },
   {
+    key: "borradores",
     at: 0.4,
     type: "objective",
     title: "Primera versión de cada parte",
     description: "Cada miembro entrega un borrador de su sección.",
     assign: "all",
+    dependsOn: ["esquema"],
+    deliverable: "intermedia",
   },
   {
+    key: "intermedia",
     at: 0.5,
     type: "milestone",
     title: "Revisión intermedia",
@@ -74,35 +90,48 @@ const PHASES: PhaseTemplate[] = [
     assign: "all",
   },
   {
+    key: "desarrollo",
     at: 0.62,
     type: "task",
     title: "Desarrollo del contenido",
     description: "Completad las secciones con el feedback de la revisión.",
     assign: "rotate",
+    dependsOn: ["borradores"],
+    deliverable: "final",
   },
   {
+    key: "diseno",
     at: 0.75,
     type: "task",
     title: "Diseño y formato",
     description: "Unificad estilo, figuras y presentación del documento.",
     assign: "rotate",
+    dependsOn: ["desarrollo"],
+    deliverable: "final",
   },
   {
+    key: "revision",
     at: 0.88,
     type: "task",
     title: "Revisión cruzada",
     description: "Cada miembro revisa la parte de otro antes de cerrar.",
     assign: "rotate",
     checklist: ["Revisar redacción", "Comprobar referencias"],
+    dependsOn: ["diseno"],
+    deliverable: "final",
   },
   {
+    key: "ensayo",
     at: 0.95,
     type: "objective",
     title: "Ensayo de la presentación",
     description: "Repartid turnos de palabra y cronometrad el conjunto.",
     assign: "all",
+    dependsOn: ["revision"],
+    deliverable: "final",
   },
   {
+    key: "final",
     at: 1,
     type: "milestone",
     title: "Entrega final",
@@ -151,6 +180,12 @@ export function buildProjectPlan(answers: SetupAnswers): Project {
   const allIds = members.map((m) => m.id);
   let rotation = 0;
 
+  // Ids resolved up-front so dependsOn / deliverable keys can point to phases
+  // regardless of their position in the list.
+  const idByKey = new Map<string, string>(
+    PHASES.map((phase) => [phase.key, uid()]),
+  );
+
   const modules: ProjectModule[] = PHASES.map((phase, order) => {
     let assigneeIds: string[] = allIds;
     if (phase.assign === "rotate" && members.length > 0) {
@@ -158,7 +193,7 @@ export function buildProjectPlan(answers: SetupAnswers): Project {
       rotation += 1;
     }
     return {
-      id: uid(),
+      id: idByKey.get(phase.key)!,
       title: phase.title,
       description: phase.description,
       type: phase.type,
@@ -170,6 +205,12 @@ export function buildProjectPlan(answers: SetupAnswers): Project {
         text,
         done: false,
       })),
+      dependsOn: (phase.dependsOn ?? [])
+        .map((key) => idByKey.get(key))
+        .filter((id): id is string => Boolean(id)),
+      deliverableId: phase.deliverable
+        ? idByKey.get(phase.deliverable) ?? null
+        : null,
       order,
       createdAt: new Date().toISOString(),
     };
