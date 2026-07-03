@@ -68,6 +68,10 @@ export function BoardView() {
 
   return (
     <DndContext
+      // Stable id: the cloud dashboard is server-rendered, and dnd-kit's
+      // auto-incremented ids differ between server and client (hydration
+      // mismatch on aria-describedby).
+      id="board-dnd"
       sensors={sensors}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}

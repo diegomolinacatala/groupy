@@ -9,7 +9,7 @@ import { NAV } from "./nav";
 
 export function Sidebar() {
   const { view, setView } = useDashboardUi();
-  const { project, reset } = useProject();
+  const { project, reset, mode } = useProject();
 
   const doneCount = project.modules.filter((m) => m.status === "done").length;
   const total = project.modules.length;
@@ -80,14 +80,16 @@ export function Sidebar() {
           <Plus className="h-3.5 w-3.5" />
           Nuevo proyecto
         </Link>
-        <button
-          type="button"
-          onClick={handleReset}
-          className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-ink"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-          Datos de ejemplo
-        </button>
+        {mode === "local" && (
+          <button
+            type="button"
+            onClick={handleReset}
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Datos de ejemplo
+          </button>
+        )}
       </div>
     </aside>
   );
