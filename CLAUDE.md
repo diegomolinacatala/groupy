@@ -33,12 +33,48 @@ replace the submission in v1).
 | Report delivery | **Web view only** (by link) |
 | Hard rule | Teacher **cannot see in-progress work** — only the report after close |
 | Target | **Real-class pilot** (gated on the non-engineering prerequisites below) |
+| Teacher sign-in | **Email + password** (magic link / Google deferred) |
+| Local demo mode | **Kept alongside** the cloud app — the zero-login `localStorage` prototype stays for demos |
+| First cloud slice | **Cloud-save + shareable join code** (students anonymous), *before* teacher accounts |
 
 ### Why Anonymous Auth for students
 Students need zero-friction entry (no email/password) but reliable attribution + working RLS.
 Supabase Anonymous Auth creates a persistent per-device session; the student only declares
 `display_name` + `email` as profile data on their `group_members` row. RLS then works via
 `auth.uid()` for both roles — no parallel token system.
+
+## Current state (updated 2026-07-02, cloud slice shipped)
+
+Two layers exist side by side:
+
+1. **Local prototype — demo mode, kept (locked decision).** A Spanish, zero-login dashboard
+   (calendar / board / team / strengths / overview) backed entirely by `localStorage`
+   (`src/lib/data/`, seeded with dummy data). Lives at `/dashboard`, untouched.
+2. **Cloud slice — LIVE end to end.** Create → share code → anonymous join → shared dashboard:
+   - **Migrations pushed** (region `eu-west-1`): `20260702101232_schema_foundation.sql` (9 tables,
+     full RLS matrix, `app.*` helpers) + `20260702150000_cloud_slice.sql`. The second one:
+     enriches `tasks` (`type`, `description`, `due_date`, `sort_order`, `checklist` jsonb,
+     `assignees uuid[]` — prototype allows multiple assignees; `assignee_member` is unused for now);
+     puts `strengths` jsonb on **`groups`** (not `projects`, so a future teacher can't see them live);
+     adds `projects.description` / `start_date`; makes `group_members.auth_uid` **nullable**
+     (declared-but-unclaimed rows for the "who are you?" screen); adds member-scoped write policies
+     **plus column-level grants** (nothing can write `auth_uid` / `join_code` / `teacher_id` via the
+     API); a `done_at` trigger; and 3 `SECURITY DEFINER` RPCs: `create_project_with_group`,
+     `get_project_by_code` (anon-callable preview: names + claimed flags, never emails),
+     `claim_member` (binds the caller's anonymous uid to a member row).
+   - **Data layer** `src/lib/data/cloud/`: Zod schemas (`schemas.ts`), row↔flat-`Project` mapping
+     (`mapping.ts`, one project = one implicit group), Server Functions (`actions.ts`, expected
+     errors as return values), server loader (`load.ts`), ordered fire-and-forget mirror
+     (`mirror.ts`), `CloudProjectProvider`. `ProjectProvider` accepts an optional `cloud` binding —
+     same reducer + UI in both modes; context exposes `mode` and `joinCode`.
+   - **Routes/UI**: `/p/[code]` (server component → not-found / who-are-you / dashboard), homepage
+     join-by-code + "volver a «título»" shortcut, wizard saves to the cloud in `GeneratingScreen`
+     (with a save-locally fallback on error). Topbar shows a copy-link share chip in cloud mode.
+   - **RLS validated behaviorally with dummy data**: 37/37 checks across creator / member /
+     stranger / no-session (strangers get only the code preview; identities can't be hijacked).
+   - **Anonymous sign-ins are enabled** in the hosted dashboard (prerequisite satisfied).
+   - `database.types.ts` is still **hand-authored** (regenerating needs `npx supabase login`, or a
+     local Docker daemon for `--db-url`); keep it in sync when migrating.
 
 ## Scope
 
@@ -115,10 +151,16 @@ session, joined to a `group_members` row. Report `payload` is an immutable snaps
 
 ## Engineering roadmap
 
-1. **Bootstrap** — `npm install`, `.env.local`, run dev, read Next 16 internal docs.
-2. **Auth** — teacher account + student anonymous auth + join-by-code + `proxy.ts`.
-3. **Data** — migrations + RLS (matrix above) + generated TS types. Validate with **dummy data**.
-4. **UI shell** — app layout, role-based nav, design tokens, base states.
+> Status 2026-07-02 (evening): **1–3 done** — the cloud slice shipped (anonymous auth,
+> join-by-code, behavioral RLS validation). **Next:** teacher accounts (email+password) or
+> the vertical slices in 5.
+
+1. **Bootstrap** — ✅ Next 16 app, deps, `.env.local`, dev runs.
+2. **Auth** — ✅ student **anonymous auth + join-by-code** live (`/p/[code]` claim flow).
+   Teacher accounts (email+password) deferred to a later slice.
+3. **Data** — ✅ two migrations pushed (schema foundation + cloud slice) + TS types.
+   ✅ RLS **validated behaviorally with dummy data** (37 checks: creator/member/stranger/no-session).
+4. **UI shell** — app layout, role-based nav, design tokens, base states. *(prototype UI already exists)*
 5. **Verticals** — templates · projects/groups · tasks + check-ins · peer-eval.
 6. **Dashboard** — teacher (projects + reports) / student (group, tasks, progress).
 7. **Report** — individual + group aggregation (web view).

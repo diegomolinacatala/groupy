@@ -1,6 +1,7 @@
 "use client";
 
-import { CalendarClock, Plus } from "lucide-react";
+import { useState } from "react";
+import { CalendarClock, Check, Link2, Plus } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import { InlineText } from "@/components/ui/InlineText";
@@ -28,7 +29,7 @@ const STATUS_COLOR: Record<ProjectStatus, { color: string; soft: string }> = {
 const STATUS_ORDER: ProjectStatus[] = ["active", "in_review", "closed"];
 
 export function Topbar() {
-  const { project, updateProject, addModule } = useProject();
+  const { project, updateProject, addModule, joinCode } = useProject();
   const { view, setView, openModule } = useDashboardUi();
 
   const statusStyle = STATUS_COLOR[project.status];
@@ -113,6 +114,7 @@ export function Topbar() {
         </div>
 
         <div className="flex items-center gap-3">
+          {joinCode && <ShareCodeChip code={joinCode} />}
           <button
             type="button"
             onClick={() => setView("team")}
@@ -128,5 +130,40 @@ export function Topbar() {
         </div>
       </div>
     </header>
+  );
+}
+
+/** Cloud-mode only: the project's share code; clicking copies the join link. */
+function ShareCodeChip({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/p/${code}`,
+      );
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard unavailable: the code itself is visible to copy by hand.
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title="Copiar enlace para el grupo"
+      className="inline-flex h-9 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+    >
+      {copied ? (
+        <Check className="h-3.5 w-3.5 text-accent" />
+      ) : (
+        <Link2 className="h-3.5 w-3.5" />
+      )}
+      <span className="font-mono tracking-[0.15em]">
+        {copied ? "Copiado" : code}
+      </span>
+    </button>
   );
 }

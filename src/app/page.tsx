@@ -1,9 +1,14 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { hasStoredProject } from "@/lib/data/store";
+import {
+  parseLastCloudProject,
+  readLastCloudProjectRaw,
+} from "@/lib/data/cloud/recent";
 
 // Cross-tab aware and hydration-safe: the server snapshot is always
 // "no project"; the client snapshot reads localStorage.
@@ -31,11 +36,24 @@ const FEATURES = [
 ];
 
 export default function Home() {
+  const router = useRouter();
+  const [joinInput, setJoinInput] = useState("");
   const hasProject = useSyncExternalStore(
     subscribeToStorage,
     hasStoredProject,
     () => false,
   );
+  // Raw string snapshot (stable identity for useSyncExternalStore); parsed
+  // into {code, title} at render time.
+  const lastCloud = parseLastCloudProject(
+    useSyncExternalStore(subscribeToStorage, readLastCloudProjectRaw, () => null),
+  );
+
+  const handleJoin = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const code = joinInput.trim().toUpperCase();
+    if (code) router.push(`/p/${encodeURIComponent(code)}`);
+  };
 
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
@@ -78,6 +96,36 @@ export default function Home() {
               </Link>
             )}
           </div>
+
+          <div className="mx-auto mt-14 max-w-sm border-t border-line pt-8">
+            <p className="type-overline mb-4">¿Te han pasado un código?</p>
+            <form onSubmit={handleJoin} className="flex justify-center gap-2">
+              <input
+                value={joinInput}
+                onChange={(event) =>
+                  setJoinInput(event.target.value.toUpperCase())
+                }
+                placeholder="AF3322F"
+                maxLength={8}
+                aria-label="Código del proyecto"
+                className="h-12 w-44 rounded-xl border border-line bg-surface px-4 text-center font-mono text-sm uppercase tracking-[0.25em] text-ink placeholder:text-muted-2 focus:border-line-strong focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="h-12 rounded-xl border border-line bg-surface px-5 text-[15px] font-medium text-ink transition-colors hover:bg-surface-2"
+              >
+                Entrar
+              </button>
+            </form>
+            {lastCloud && (
+              <Link
+                href={`/p/${lastCloud.code}`}
+                className="mt-4 inline-block text-sm text-accent hover:underline"
+              >
+                Volver a «{lastCloud.title}»
+              </Link>
+            )}
+          </div>
         </section>
 
         <section className="mx-auto w-full max-w-4xl px-6 pb-24">
@@ -101,8 +149,8 @@ export default function Home() {
 
       <footer className="border-t border-line px-6 py-5 md:px-10">
         <p className="text-xs text-muted-2">
-          Groupy — prototipo con datos de ejemplo. Ningún dato sale de este
-          navegador.
+          Groupy — los proyectos con código se guardan en la nube y se
+          comparten por enlace. El modo de ejemplo no sale de este navegador.
         </p>
       </footer>
     </div>

@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { buildProjectPlan, type SetupAnswers } from "@/lib/data/plan";
+import type { Project } from "@/lib/data/types";
 import { saveProject } from "@/lib/data/store";
+import { createCloudProject } from "@/lib/data/cloud/actions";
+import { projectToCreateInput } from "@/lib/data/cloud/mapping";
+import { saveLastCloudProject } from "@/lib/data/cloud/recent";
 import { cn } from "@/lib/utils/cn";
 
-// Short staged pass between the last question and the dashboard: the plan
-// is built and persisted immediately; the pacing is purely presentational
-// so the hand-off reads as deliberate work, not a flash of redirect.
+// Staged pass between the last question and the dashboard. The plan is built
+// immediately and saved to Supabase (share code + cloud project); the pacing
+// is presentational, but the final step is real — it completes when the save
+// lands, and navigation waits for both.
 
 const STEP_INTERVAL_MS = 850;
 const EXIT_DELAY_MS = 700;
@@ -17,32 +22,66 @@ const EXIT_DELAY_MS = 700;
 export function GeneratingScreen({ answers }: { answers: SetupAnswers }) {
   const router = useRouter();
   const [completed, setCompleted] = useState(0);
+  const [joinCode, setJoinCode] = useState<string | null>(null);
+  const [cloudError, setCloudError] = useState<string | null>(null);
+  const startedRef = useRef(false);
+  const projectRef = useRef<Project | null>(null);
 
   const lines = [
     "Leyendo vuestras respuestas",
     "Estructurando las fases del proyecto",
     `Repartiendo tareas entre ${answers.memberNames.length} personas`,
     "Colocando fechas en el calendario",
+    "Guardando en la nube",
   ];
   const total = lines.length;
+  // The first steps run on timers; the last one completes when the save does.
+  const animatedTotal = total - 1;
 
-  // Saving twice under StrictMode's double-mount is harmless (last write
-  // wins); the cleanup clears the first run's timers so pacing stays correct.
+  const runCreate = async () => {
+    setCloudError(null);
+    const project = projectRef.current ?? buildProjectPlan(answers);
+    projectRef.current = project;
+    const result = await createCloudProject(projectToCreateInput(project));
+    if (result.ok) {
+      saveLastCloudProject({ code: result.joinCode, title: project.title });
+      setJoinCode(result.joinCode);
+    } else {
+      setCloudError(result.error);
+    }
+  };
+
+  // Unlike the old localStorage write, the cloud insert is not idempotent —
+  // the ref guards StrictMode's double-mount (refs survive it).
   useEffect(() => {
-    saveProject(buildProjectPlan(answers));
+    if (startedRef.current) return;
+    startedRef.current = true;
+    void runCreate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
-    for (let i = 1; i <= total; i++) {
+    for (let i = 1; i <= animatedTotal; i++) {
       timers.push(setTimeout(() => setCompleted(i), i * STEP_INTERVAL_MS));
     }
-    timers.push(
-      setTimeout(
-        () => router.push("/dashboard"),
-        total * STEP_INTERVAL_MS + EXIT_DELAY_MS,
-      ),
-    );
     return () => timers.forEach(clearTimeout);
-  }, [answers, router, total]);
+  }, [animatedTotal]);
+
+  useEffect(() => {
+    if (!joinCode || completed < animatedTotal) return;
+    const timer = setTimeout(
+      () => router.push(`/p/${joinCode}`),
+      EXIT_DELAY_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [joinCode, completed, animatedTotal, router]);
+
+  const handleLocalFallback = () => {
+    const project = projectRef.current;
+    if (project) saveProject(project);
+    router.push("/dashboard");
+  };
 
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
@@ -62,8 +101,13 @@ export function GeneratingScreen({ answers }: { answers: SetupAnswers }) {
 
           <ul className="flex flex-col gap-5">
             {lines.map((line, index) => {
-              const isDone = index < completed;
-              const isCurrent = index === completed;
+              const isCloudStep = index === animatedTotal;
+              const isDone = isCloudStep
+                ? joinCode !== null
+                : index < completed;
+              const isCurrent = isCloudStep
+                ? completed >= animatedTotal && !isDone && !cloudError
+                : index === completed;
               return (
                 <li
                   key={line}
@@ -90,6 +134,33 @@ export function GeneratingScreen({ answers }: { answers: SetupAnswers }) {
               );
             })}
           </ul>
+
+          {cloudError && (
+            <div className="mt-10 rounded-xl border border-line bg-surface p-4">
+              <p className="text-sm font-medium text-ink">
+                No se pudo guardar en la nube
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-muted">
+                {cloudError}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void runCreate()}
+                  className="inline-flex h-10 items-center rounded-lg bg-ink px-4 text-sm font-medium text-canvas transition-colors hover:bg-ink-hover"
+                >
+                  Reintentar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLocalFallback}
+                  className="inline-flex h-10 items-center rounded-lg border border-line bg-surface px-4 text-sm text-ink transition-colors hover:bg-surface-2"
+                >
+                  Seguir solo en este navegador
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>
