@@ -17,7 +17,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowRight, Check, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Plus, Trash2, Wand2 } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import { buildProjectFlow, orderedBlocks, type BlockFlow } from "@/lib/data/flow";
@@ -26,7 +26,7 @@ import { InlineText } from "@/components/ui/InlineText";
 import { Segmented } from "@/components/ui/Segmented";
 import { Avatar } from "@/components/ui/Avatar";
 import { cn } from "@/lib/utils/cn";
-import { Corkboard, CorkNodeStatic } from "./Corkboard";
+import { Corkboard, CorkNodeStatic, autoLayoutFractions } from "./Corkboard";
 
 // The map: a centered rail of DIAMONDS — one per BLOQUE — and exactly ONE
 // block open below as a free-drop corkboard (no stacked scrolling). Click a
@@ -54,6 +54,7 @@ export function MapView() {
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [scope, setScope] = useState<MapScope>("team");
   const [activeTask, setActiveTask] = useState<ProjectModule | null>(null);
+  const [blockDragging, setBlockDragging] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -61,6 +62,13 @@ export function MapView() {
 
   const flow = buildProjectFlow(project);
   const blocks = orderedBlocks(project);
+  // Rail order ≠ raw order: the "En orden" chain reads first (with its →
+  // connectors) and every "Independiente" block jumps to the OTHER side of
+  // the chain, past a divider — it is not a link of that list.
+  const railFlows = [
+    ...flow.blocks.filter((b) => b.block.mode === "sequence"),
+    ...flow.blocks.filter((b) => b.block.mode === "independent"),
+  ];
   // Derived, never stale: a deleted selection falls back to the first block.
   const activeFlow =
     flow.blocks.find((b) => b.block.id === selectedBlockId) ??
@@ -72,17 +80,21 @@ export function MapView() {
     if (data?.type === "task") {
       setActiveTask(project.modules.find((m) => m.id === data.taskId) ?? null);
     }
+    if (data?.type === "block") setBlockDragging(true);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveTask(null);
+    setBlockDragging(false);
     const { active, over } = event;
     if (!over) return;
     const data = active.data.current;
 
     if (data?.type === "block") {
       if (active.id === over.id) return;
-      const ids = blocks.map((b) => b.id);
+      // Reorder against what the user SEES (the rail), then persist that
+      // order globally — independents simply stay grouped at the end.
+      const ids = railFlows.map((b) => b.block.id);
       const from = ids.indexOf(String(active.id));
       const to = ids.indexOf(String(over.id));
       if (from < 0 || to < 0) return;
@@ -110,6 +122,14 @@ export function MapView() {
     openModule(id);
   };
 
+  // "Ordenar": reset the open block's tasks to a left→right depth layout.
+  const handleAutoLayout = () => {
+    if (!activeFlow) return;
+    for (const [id, { fx, fy }] of autoLayoutFractions(activeFlow.modules)) {
+      setModulePosition(id, fx, fy);
+    }
+  };
+
   const needsIdentity = scope === "mine" && !currentMemberId;
 
   return (
@@ -121,7 +141,10 @@ export function MapView() {
       collisionDetection={pointerWithin}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => setActiveTask(null)}
+      onDragCancel={() => {
+        setActiveTask(null);
+        setBlockDragging(false);
+      }}
     >
       <div className="flex h-full flex-col gap-3 p-4 md:p-6">
         {/* Title · diamond rail (centered) · scope */}
@@ -130,9 +153,10 @@ export function MapView() {
 
           <div className="order-3 w-full md:order-none md:w-auto md:justify-self-center">
             <DiamondRail
-              flow={flow.blocks}
+              flow={railFlows}
               activeBlockId={activeFlow?.block.id ?? null}
               taskDragging={activeTask !== null}
+              blockDragging={blockDragging}
               onSelect={setSelectedBlockId}
               onAddBlock={handleAddBlock}
             />
@@ -174,6 +198,7 @@ export function MapView() {
               }
             }}
             onAddTask={handleAddTask}
+            onAutoLayout={handleAutoLayout}
           />
         )}
 
@@ -225,15 +250,56 @@ function DiamondRail({
   flow,
   activeBlockId,
   taskDragging,
+  blockDragging,
   onSelect,
   onAddBlock,
 }: {
+  /** Rail order: the sequence chain first, independents after the divider. */
   flow: BlockFlow[];
   activeBlockId: string | null;
   taskDragging: boolean;
+  /** Diamonds only TRANSFORM while sorting — static connectors between them
+   *  would point at nothing, so they hide for the duration of the drag. */
+  blockDragging: boolean;
   onSelect: (id: string) => void;
   onAddBlock: () => void;
 }) {
+  const connectorFor = (blockFlow: BlockFlow, index: number) => {
+    if (index === 0) return null;
+    const prev = flow[index - 1];
+    // → only INSIDE the sequence chain; the chain→independents boundary is a
+    // divider (an independent block is never a link of the list).
+    if (
+      blockFlow.block.mode === "sequence" &&
+      prev.block.mode === "sequence"
+    ) {
+      return (
+        <ArrowRight
+          aria-hidden
+          className={cn(
+            "h-3 w-3 shrink-0 text-muted-2 transition-opacity",
+            blockDragging && "opacity-0",
+          )}
+        />
+      );
+    }
+    if (
+      blockFlow.block.mode === "independent" &&
+      prev.block.mode === "sequence"
+    ) {
+      return (
+        <span
+          aria-hidden
+          className={cn(
+            "mx-1.5 h-6 w-px shrink-0 rounded-full bg-line-strong/70 transition-opacity",
+            blockDragging && "opacity-0",
+          )}
+        />
+      );
+    }
+    return <span aria-hidden className="w-2 shrink-0" />;
+  };
+
   return (
     <div className="flex items-center justify-center gap-1 overflow-x-auto px-1 py-1">
       <SortableContext
@@ -242,15 +308,7 @@ function DiamondRail({
       >
         {flow.map((blockFlow, index) => (
           <Fragment key={blockFlow.block.id}>
-            {index > 0 &&
-              (blockFlow.block.mode === "sequence" ? (
-                <ArrowRight
-                  aria-hidden
-                  className="h-3 w-3 shrink-0 text-muted-2"
-                />
-              ) : (
-                <span aria-hidden className="w-2 shrink-0" />
-              ))}
+            {connectorFor(blockFlow, index)}
             <Diamond
               blockFlow={blockFlow}
               active={blockFlow.block.id === activeBlockId}
@@ -370,6 +428,7 @@ function BlockBar({
   onToggleMode,
   onDelete,
   onAddTask,
+  onAutoLayout,
 }: {
   blockFlow: BlockFlow;
   canDelete: boolean;
@@ -377,6 +436,7 @@ function BlockBar({
   onToggleMode: () => void;
   onDelete: () => void;
   onAddTask: () => void;
+  onAutoLayout: () => void;
 }) {
   const { block, state, modules, doneCount } = blockFlow;
   return (
@@ -433,6 +493,17 @@ function BlockBar({
             className="rounded p-1 text-muted-2 opacity-0 transition-all hover:bg-danger-soft hover:text-danger group-hover/bar:opacity-100"
           >
             <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {modules.length > 1 && (
+          <button
+            type="button"
+            onClick={onAutoLayout}
+            title="Ordenar las tareas de izquierda a derecha"
+            className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-line-strong hover:text-ink"
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+            Ordenar
           </button>
         )}
         <button

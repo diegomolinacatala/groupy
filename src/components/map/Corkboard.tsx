@@ -13,6 +13,7 @@ import { Check, Lock, LockOpen, Plus, X } from "lucide-react";
 import type { BlockFlow, ModuleFlow, ProjectFlow } from "@/lib/data/flow";
 import { wouldCreateCycle } from "@/lib/data/flow";
 import { importanceScale, type Project, type ProjectModule } from "@/lib/data/types";
+import { formatShort } from "@/lib/utils/dates";
 import { DocTypeBadge } from "@/components/ui/DocTypeBadge";
 import { colorForKey } from "@/lib/utils/colors";
 import { cn } from "@/lib/utils/cn";
@@ -116,17 +117,37 @@ function layersOf(modules: ProjectModule[]): ProjectModule[][] {
 }
 
 /**
+ * Board fractions (0–1) that lay a block out left→right by dependency depth:
+ * one column per layer, tasks stacked within it. Not a fancy graph layout —
+ * it just makes the arrows read left-to-right. Used by the "Ordenar" reset.
+ */
+export function autoLayoutFractions(
+  modules: ProjectModule[],
+): Map<string, { fx: number; fy: number }> {
+  const layers = layersOf(modules);
+  const cols = Math.max(layers.length, 1);
+  const out = new Map<string, { fx: number; fy: number }>();
+  layers.forEach((layer, l) => {
+    const rows = layer.length;
+    const fx = cols === 1 ? 0.06 : (l / (cols - 1)) * 0.86 + 0.04;
+    layer.forEach((mod, i) => {
+      const fy = rows === 1 ? 0.14 : (i / (rows - 1)) * 0.74 + 0.1;
+      out.set(mod.id, { fx, fy });
+    });
+  });
+  return out;
+}
+
+/**
  * Top-left px of every node. Stored fractions win; tasks never dragged get an
- * auto slot from their dependency depth plus a stable jitter, so a fresh
- * board already reads left→right.
+ * auto slot: a ZIG-ZAG down the board (left, indented right, left…) in flow
+ * order, plus a stable jitter for the hand-pinned look.
  */
 function resolvePositions(
   modules: ProjectModule[],
   board: { w: number; h: number },
 ): Map<string, Point> {
   const positions = new Map<string, Point>();
-  const layers = layersOf(modules);
-  const cols = Math.max(layers.length, 1);
 
   const place = (mod: ProjectModule, fx: number, fy: number) => {
     const w = nodeWidth(mod);
@@ -138,27 +159,19 @@ function resolvePositions(
     });
   };
 
-  layers.forEach((layer, l) => {
-    const rows = Math.max(layer.length, 1);
-    layer.forEach((mod, i) => {
-      if (mod.mapX !== null && mod.mapY !== null) {
-        place(mod, mod.mapX, mod.mapY);
-        return;
-      }
-      // Spread layers across the full width (fractions are of the usable
-      // range, so node width is already accounted for), stagger rows and add
-      // a stable jitter for the hand-pinned look.
-      const fx =
-        cols === 1
-          ? 0.12 + hash01(mod.id) * 0.1
-          : (l / (cols - 1)) * 0.82 + 0.02 + hash01(mod.id) * 0.06;
-      const fy =
-        ((i + 0.5) / rows) * 0.6 +
-        0.05 +
-        (l % 3) * 0.1 +
-        hash01(mod.id + ":y") * 0.06;
-      place(mod, fx, fy);
-    });
+  const auto: ProjectModule[] = [];
+  for (const mod of modules) {
+    if (mod.mapX !== null && mod.mapY !== null) place(mod, mod.mapX, mod.mapY);
+    else auto.push(mod);
+  }
+
+  auto.forEach((mod, i) => {
+    const fx = (i % 2 === 0 ? 0.04 : 0.38) + hash01(mod.id) * 0.1;
+    const fy =
+      auto.length <= 1
+        ? 0.12 + hash01(mod.id + ":y") * 0.08
+        : (i / (auto.length - 1)) * 0.85 + hash01(mod.id + ":y") * 0.05;
+    place(mod, fx, fy);
   });
   return positions;
 }
@@ -243,7 +256,6 @@ export function Corkboard({
     setRects(next);
     // layoutKey is the real dependency: it fingerprints everything that can
     // move a node (positions, sizes, edges, board size).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutKey]);
 
   /** Node rect with the live drag offset applied — edges follow the drag. */
@@ -511,6 +523,23 @@ export function Corkboard({
       }
     : null;
 
+  // Dated tasks get a vertical guide at their center — bottom of the board up
+  // to a name + date label at the top. rectFor keeps it glued during drags.
+  const dueMarkers = modules.flatMap((mod) => {
+    if (!mod.dueDate) return [];
+    const rect = rectFor(mod.id);
+    if (!rect) return [];
+    return [
+      {
+        id: mod.id,
+        x: rect.x + rect.w / 2,
+        title: mod.title || "Sin título",
+        // "12 mar 2026" → "12 mar": the year is noise on the board.
+        date: formatShort(mod.dueDate).replace(/ \d{4}$/, ""),
+      },
+    ];
+  });
+
   return (
     <div
       ref={containerRef}
@@ -586,6 +615,21 @@ export function Corkboard({
             <path d="M 0 0 L 8 4 L 0 8 z" fill="var(--color-accent)" />
           </marker>
         </defs>
+        {/* Date guides live UNDER the dependency curves. */}
+        {boardSize &&
+          dueMarkers.map((m) => (
+            <line
+              key={`due-${m.id}`}
+              x1={m.x}
+              y1={34}
+              x2={m.x}
+              y2={boardSize.h}
+              stroke="var(--color-line-strong)"
+              strokeWidth={1}
+              strokeDasharray="2 4"
+              opacity={0.85}
+            />
+          ))}
         {edges.map((edge) => {
           const d = edgePath(edge);
           if (!d) return null;
@@ -651,6 +695,21 @@ export function Corkboard({
           </>
         )}
       </svg>
+
+      {/* Name + date on top of each date guide — travels with the task. */}
+      {dueMarkers.map((m) => (
+        <div
+          key={`due-label-${m.id}`}
+          aria-hidden
+          className="pointer-events-none absolute top-1 w-32 -translate-x-1/2 text-center"
+          style={{ left: m.x }}
+        >
+          <p className="truncate text-[10px] font-medium leading-tight text-ink-2">
+            {m.title}
+          </p>
+          <p className="text-[10px] leading-tight text-muted">{m.date}</p>
+        </div>
+      ))}
 
       {/* Remove button for the selected edge */}
       {selectedEdge && selectedMid && (

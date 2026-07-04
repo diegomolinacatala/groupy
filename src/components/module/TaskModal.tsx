@@ -5,7 +5,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
   Check,
-  Link2,
   Lock,
   LockOpen,
   Plus,
@@ -60,6 +59,13 @@ const pickerChip = (active: boolean) =>
       ? "border-ink bg-ink text-canvas"
       : "border-line bg-surface text-ink-2 hover:border-line-strong",
   );
+
+/** Stable −2.7°…+2.7° per id — the "slightly untidy pile" in the pickers. */
+function jitterDeg(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  return ((Math.abs(h) % 7) - 3) * 0.9;
+}
 
 export function TaskModal() {
   const {
@@ -163,7 +169,7 @@ export function TaskModal() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.98 }}
             transition={{ type: "spring", damping: 30, stiffness: 380 }}
-            className="relative flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-line bg-canvas shadow-pop"
+            className="relative flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-line bg-canvas shadow-pop"
           >
             <div className="flex items-center justify-between border-b border-line bg-surface px-5 py-3">
               <span className="type-overline">Tarea</span>
@@ -182,14 +188,16 @@ export function TaskModal() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-6 md:px-8">
-              {/* Depende de ← [ LA TAREA ] → Bloquea a */}
-              <div className="grid gap-x-4 gap-y-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)] md:items-center">
+              {/* Depende de ← [ LA TAREA ] → Bloquea a. The task itself is
+                  the protagonist: the center column dominates the row. */}
+              <div className="grid gap-x-5 gap-y-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.9fr)_minmax(0,1fr)] md:items-center">
                 <div className="order-first md:order-none md:col-start-2">
                   <TaskCard project={project} module={activeModule} />
                 </div>
 
                 <div className="md:col-start-1 md:row-start-1">
                   <FlowColumn
+                    project={project}
                     side="left"
                     title="Depende de"
                     empty="No depende de nada."
@@ -204,6 +212,7 @@ export function TaskModal() {
 
                 <div className="md:col-start-3 md:row-start-1">
                   <FlowColumn
+                    project={project}
                     side="right"
                     title="Bloquea a"
                     empty="No bloquea a ninguna."
@@ -538,32 +547,32 @@ function TaskCard({
   return (
     <div
       style={{
-        width: `min(100%, ${Math.round(300 * scale)}px)`,
+        width: `min(100%, ${Math.round(430 * scale)}px)`,
         borderLeftColor: ownerColor?.bg ?? "var(--color-line-strong)",
         backgroundColor: ownerColor ? ownerColor.bg + "0F" : undefined,
       }}
-      className="mx-auto rounded-xl border border-line border-l-4 bg-surface p-4 shadow-raised"
+      className="mx-auto rounded-2xl border border-line border-l-[5px] bg-surface p-5 shadow-pop md:p-6"
     >
-      <div className="flex items-start gap-2">
-        <DocTypeBadge docType={module.docType} className="mt-1" />
+      <div className="flex items-start gap-2.5">
+        <DocTypeBadge docType={module.docType} className="mt-1.5" />
         <InlineText
           value={module.title}
           onCommit={(title) => updateModule(module.id, { title })}
           placeholder="Título de la tarea"
           ariaLabel="Título de la tarea"
           className={cn(
-            "-ml-1 min-w-0 flex-1 font-semibold leading-snug",
+            "-ml-1 min-w-0 flex-1 text-xl font-semibold leading-snug md:text-2xl",
             done && "text-muted line-through",
           )}
         />
         {done ? (
-          <Check className="mt-1 h-4 w-4 shrink-0 text-done" strokeWidth={3} />
+          <Check className="mt-1.5 h-5 w-5 shrink-0 text-done" strokeWidth={3} />
         ) : (
-          <LockOpen className="mt-1 h-4 w-4 shrink-0 text-muted" />
+          <LockOpen className="mt-1.5 h-5 w-5 shrink-0 text-muted" />
         )}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted">
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-muted">
         {module.dueDate && (
           <span title={formatShort(module.dueDate)}>
             {deadlineLabel(module.dueDate)}
@@ -586,6 +595,7 @@ function TaskCard({
 }
 
 function FlowColumn({
+  project,
   side,
   title,
   empty,
@@ -596,6 +606,7 @@ function FlowColumn({
   onRemove,
   onAdd,
 }: {
+  project: Project;
   side: "left" | "right";
   title: string;
   empty: string;
@@ -627,9 +638,10 @@ function FlowColumn({
       )}
 
       {modules.map((mod) => (
-        <span key={mod.id} className="flex w-full items-center gap-1.5">
+        <span key={mod.id} className="flex max-w-full items-center gap-1.5">
           {side === "right" && arrow}
           <FlowChip
+            project={project}
             module={mod}
             onNavigate={() => onNavigate(mod.id)}
             onRemove={() => onRemove(mod.id)}
@@ -639,7 +651,8 @@ function FlowColumn({
       ))}
 
       <Popover
-        className="w-72"
+        portal
+        className="w-80"
         align={side === "left" ? "end" : "start"}
         trigger={({ toggle }) => (
           <button
@@ -656,31 +669,48 @@ function FlowColumn({
           candidates.length === 0 ? (
             <p className="px-2.5 py-2 text-xs text-muted">Sin candidatas.</p>
           ) : (
-            <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
-              {candidates.map((candidate) => (
-                <button
-                  key={candidate.id}
-                  type="button"
-                  onClick={() => {
-                    onAdd(candidate.id);
-                    close();
-                  }}
-                  className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-surface-2"
-                >
-                  <Link2 className="h-3.5 w-3.5 shrink-0 text-muted" />
-                  <DocTypeBadge docType={candidate.docType} />
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 truncate text-xs",
-                      candidate.status === "done"
-                        ? "text-muted line-through"
-                        : "text-ink",
-                    )}
+            // A loose pile, not a list: each candidate keeps the chip look it
+            // has everywhere else (owner tint, importance = size) with a
+            // stable slight rotation.
+            <div className="flex max-h-64 flex-wrap items-center gap-2 overflow-y-auto p-1.5">
+              {candidates.map((candidate) => {
+                const owner = project.members.find((m) =>
+                  candidate.assigneeIds.includes(m.id),
+                );
+                const color = owner ? colorForKey(owner.colorKey) : null;
+                const scale = importanceScale(candidate.importance);
+                return (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    onClick={() => {
+                      onAdd(candidate.id);
+                      close();
+                    }}
+                    style={{
+                      fontSize: 12 * scale,
+                      padding: `${5 * scale}px ${10 * scale}px`,
+                      gap: 6 * scale,
+                      rotate: `${jitterDeg(candidate.id)}deg`,
+                      backgroundColor: color ? color.bg + "14" : undefined,
+                      borderColor: color ? color.bg + "26" : undefined,
+                    }}
+                    className="flex max-w-full items-center rounded-lg border border-line bg-surface text-left shadow-card transition-[rotate,border-color] hover:rotate-0 hover:border-line-strong"
                   >
-                    {candidate.title || "Sin título"}
-                  </span>
-                </button>
-              ))}
+                    <DocTypeBadge docType={candidate.docType} />
+                    <span
+                      className={cn(
+                        "min-w-0 font-medium leading-snug break-words",
+                        candidate.status === "done"
+                          ? "text-muted line-through"
+                          : "text-ink",
+                      )}
+                    >
+                      {candidate.title || "Sin título"}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )
         }
@@ -689,19 +719,33 @@ function FlowColumn({
   );
 }
 
-/** One related task: click travels to it, the × unlinks it. */
+/** One related task: same chip look as everywhere (owner tint, importance =
+ *  size). Click travels to it, the × unlinks it. */
 function FlowChip({
+  project,
   module,
   onNavigate,
   onRemove,
 }: {
+  project: Project;
   module: ProjectModule;
   onNavigate: () => void;
   onRemove: () => void;
 }): ReactNode {
   const pending = module.status !== "done";
+  const owner = project.members.find((m) => module.assigneeIds.includes(m.id));
+  const color = owner ? colorForKey(owner.colorKey) : null;
+  const scale = importanceScale(module.importance);
   return (
-    <span className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line bg-surface py-1.5 pl-2.5 pr-1.5 shadow-card transition-colors hover:border-line-strong">
+    <span
+      style={{
+        fontSize: 12 * scale,
+        gap: 6 * scale,
+        backgroundColor: color ? color.bg + "14" : undefined,
+        borderColor: color ? color.bg + "26" : undefined,
+      }}
+      className="flex max-w-full items-center rounded-lg border border-line bg-surface py-1 pl-2 pr-1 shadow-card transition-colors hover:border-line-strong"
+    >
       {pending ? (
         <Lock className="h-3.5 w-3.5 shrink-0 text-muted" />
       ) : (
@@ -713,8 +757,8 @@ function FlowChip({
         onClick={onNavigate}
         title="Abrir esta tarea"
         className={cn(
-          "min-w-0 flex-1 truncate text-left text-xs font-medium hover:underline",
-          pending ? "text-ink-2" : "text-muted line-through",
+          "min-w-0 truncate text-left font-medium hover:underline",
+          pending ? "text-ink" : "text-muted line-through",
         )}
       >
         {module.title || "Sin título"}
@@ -723,7 +767,7 @@ function FlowChip({
         type="button"
         onClick={onRemove}
         aria-label={`Quitar «${module.title || "Sin título"}»`}
-        className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-surface-3 hover:text-danger"
+        className="grid h-5 w-5 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-surface-3 hover:text-danger"
       >
         <X className="h-3.5 w-3.5" />
       </button>

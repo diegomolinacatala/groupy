@@ -103,25 +103,35 @@ project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mec
   (closed padlock + who/what blocks); plus a **right rail** (lg+) with Entrega countdown
   + time bar, Tu avance, "Te esperan" (my tasks others wait on → opens the task) and
   quick actions (nueva tarea para mí, ver el mapa). `OrganizationView` (landing) — "Sin
-  asignar" strip + one tinted column per member; drag to assign (single-owner),
-  corner-handle resize = importance; chips KEEP their importance width inside columns
-  (size = information, everywhere). `MapView` (redesigned 2026-07-03) — a centered rail
-  of **DIAMONDS**, one per block (click = open, drag = reorder, drop a task on one =
-  move it to that block, dashed diamond = add); exactly ONE block open below as a
-  **corkboard** (`Corkboard.tsx`): free Mac-desktop positioning persisted as board
-  fractions (`mapX`/`mapY`, null = auto-layout by dependency depth), low-opacity dot
-  grid that swells while dragging and pulses on drop, pick-up scale/tilt animation
-  (`animate-pick`, also on Personal/Organización overlays). Deps are measured-SVG
+  asignar" strip + one tinted column per member; drag to assign (single-owner); chips
+  HUG their text (width = title), importance reads as font/padding scale, resized from
+  a thickened bottom-left corner handle (a colored "wall", always faintly visible —
+  drag left/down to grow). `MapView` (redesigned 2026-07-03) — a centered rail
+  of **DIAMONDS**: the "En orden" chain first with → connectors, then a divider and
+  the "Independiente" blocks grouped on the other side (never links of the chain);
+  connectors fade out while a diamond is being dragged (they don't follow sortable
+  transforms). Click = open, drag = reorder (committed against the rail order), drop
+  a task on one = move it to that block, dashed diamond = add; exactly ONE block open
+  below as a **corkboard** (`Corkboard.tsx`): free Mac-desktop positioning persisted
+  as board fractions (`mapX`/`mapY`, null = zig-zag auto-layout in flow order — left,
+  indented right, left…), low-opacity dot grid that swells while dragging and pulses
+  on drop (hidden under `prefers-reduced-motion`), pick-up scale/tilt animation
+  (`animate-pick`, also on Personal/Organización overlays). Tasks with a `dueDate`
+  get a dashed vertical guide at their center (bottom → top) with name + date on top;
+  it follows the task while dragging. Deps are measured-SVG
   arrows dragged from node ports (both directions: right = bloquea a, left = depende
   de) with **magnetic snapping**, valid-target highlighting, invalid dimming, marching
   dashed preview and a flash on connect; click-on-edge × removes. **Everyone can edit
   everything in the map** (cycles are the only hard rule). A "Mis tareas" scope fades
   other people's tasks to ghosts (local mode asks "¿quién eres?" first).
 - **Task popup** (`TaskModal.tsx`, replaced the right SlideOver/`ModuleEditor` —
-  clicking any task anywhere opens it): the task as a big center card (width scales
-  with importance), "Depende de" column on the left, "Bloquea a" on the right (chips
-  navigate the graph, + pickers exclude cycles), remaining options below (estado,
-  fecha, bloque, tipo, importancia, responsables, descripción, checklist).
+  clicking any task anywhere opens it): the task as a BIG center card — the
+  protagonist (wide center column, xl title, width still scales with importance),
+  "Depende de" column on the left, "Bloquea a" on the right (chips navigate the
+  graph; the + pickers exclude cycles and render candidates as a loose pile of
+  chips — owner tint, importance = size, stable slight rotation, no link icon),
+  remaining options below as secondary (estado, fecha, bloque, tipo, importancia,
+  responsables, descripción, checklist).
 - **Wizard** (6 steps): título+objetivos → equipo → plazo → ¿quién eres? → tus fortalezas →
   tareas. Continue button carries a ↵ icon (no "o pulsa Enter" copy). Cloud save happens at
   the final click behind the button (create → claim → strengths → `/p/[code]`), landing on

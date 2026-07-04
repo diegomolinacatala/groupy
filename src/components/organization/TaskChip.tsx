@@ -21,9 +21,6 @@ export interface ChipDragData {
   containerId: string;
 }
 
-/** Base chip width at default importance — scaled by `importanceScale`. */
-const CHIP_BASE_WIDTH = 150;
-
 function ChipInner({
   module,
   importance,
@@ -37,10 +34,10 @@ function ChipInner({
 }) {
   const scale = importanceScale(importance);
   // Importance is rendered purely as size — the number itself never shows.
-  // The chip KEEPS this width wherever it lands (strip or column): size is
-  // information, so it must read the same across containers.
+  // The chip hugs its text (width = whatever the title needs), so importance
+  // reads as font + padding scale; ragged widths are the point.
   const style: CSSProperties = {
-    width: Math.round(CHIP_BASE_WIDTH * scale),
+    width: "fit-content",
     maxWidth: "100%",
     fontSize: 13 * scale,
     padding: `${6 * scale}px ${11 * scale}px`,
@@ -129,8 +126,9 @@ export function SortableTaskChip({
     const g = gesture.current!;
     const dx = e.clientX - g.x;
     const dy = e.clientY - g.y;
+    // Bottom-LEFT corner: pulling outward (left or down) grows the chip.
     // Dominant axis, so pure-horizontal and diagonal drags step alike.
-    const delta = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
+    const delta = Math.abs(dx) >= Math.abs(dy) ? -dx : dy;
     return clampImportance(g.base + Math.round(delta / RESIZE_STEP_PX));
   };
 
@@ -178,7 +176,7 @@ export function SortableTaskChip({
       onClick={onOpen}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "group relative block max-w-full cursor-grab touch-none select-none active:cursor-grabbing",
+        "group relative block w-fit max-w-full cursor-grab touch-none select-none active:cursor-grabbing",
         isDragging && "opacity-30",
       )}
     >
@@ -187,6 +185,8 @@ export function SortableTaskChip({
         importance={preview ?? module.importance}
         color={color}
       />
+      {/* Resize handle: the bottom-left corner of the chip drawn THICKER
+          (like a wall), always visible — drag it outward to grow the task. */}
       <span
         onPointerDown={startResize}
         onPointerMove={moveResize}
@@ -195,11 +195,15 @@ export function SortableTaskChip({
         onLostPointerCapture={cancelResize}
         onClick={(e) => e.stopPropagation()}
         aria-hidden
+        style={{
+          borderColor:
+            preview !== null
+              ? "var(--color-accent)"
+              : color?.bg ?? "var(--color-line-strong)",
+        }}
         className={cn(
-          "absolute -bottom-1 -right-1 h-3 w-3 cursor-nwse-resize touch-none rounded-full border shadow-card transition-opacity",
-          preview !== null
-            ? "border-accent bg-accent-soft opacity-100"
-            : "border-line-strong bg-surface opacity-0 group-hover:opacity-100",
+          "absolute -bottom-px -left-px h-4 w-4 cursor-nesw-resize touch-none rounded-bl-lg border-b-[3px] border-l-[3px] transition-opacity",
+          preview !== null ? "opacity-100" : "opacity-60 group-hover:opacity-100",
         )}
       />
     </button>
