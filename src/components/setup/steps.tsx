@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { Check, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { X } from "lucide-react";
 import type { SetupAnswers } from "@/lib/data/plan";
 import { cn } from "@/lib/utils/cn";
 import { addDaysISO, addMonthsISO, daysBetweenISO } from "@/lib/utils/dates";
+import { MEMBER_COLORS, initialsFromName } from "@/lib/utils/colors";
 
-// The six wizard questions. Each step renders a heading and one input;
+// The four wizard questions. Each step renders a heading and one input;
 // navigation and the continue button live in SetupWizard.
 
 interface StepProps {
@@ -51,42 +52,6 @@ const chipClass = (active: boolean) =>
       ? "border-ink bg-ink text-canvas"
       : "border-line bg-surface text-ink-2 hover:border-line-strong",
   );
-
-export function StepProject({ answers, patch, onNext }: StepProps) {
-  return (
-    <div>
-      <WizardHeading overline="El proyecto" question="¿Qué vais a hacer?" />
-
-      <input
-        autoFocus
-        value={answers.title}
-        onChange={(e) => patch({ title: e.target.value })}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter") return;
-          e.preventDefault();
-          if (answers.title.trim()) onNext();
-        }}
-        placeholder="Título del trabajo"
-        aria-label="Título del proyecto"
-        className={inputClass}
-      />
-
-      <label className="mt-4 block">
-        <span className="mb-1.5 block text-xs font-medium text-muted">
-          Objetivos
-        </span>
-        <textarea
-          value={answers.description}
-          onChange={(e) => patch({ description: e.target.value })}
-          rows={3}
-          placeholder="Opcional"
-          aria-label="Objetivos"
-          className="w-full resize-none rounded-xl border border-line bg-surface px-4 py-3 text-[15px] leading-relaxed text-ink outline-none transition-colors placeholder:text-muted-2 focus:border-ink"
-        />
-      </label>
-    </div>
-  );
-}
 
 /**
  * Shared quick-entry list (team, tasks): type, Enter, type, Enter. Enter on
@@ -180,7 +145,7 @@ export function StepTeam({ answers, patch, onNext }: StepProps) {
       <WizardHeading
         overline="El equipo"
         question="¿Quiénes sois?"
-        helper="Al menos dos. La primera persona coordina."
+        helper="Al menos dos personas."
       />
 
       <QuickList
@@ -212,11 +177,6 @@ export function StepTeam({ answers, patch, onNext }: StepProps) {
           })
         }
         onNext={onNext}
-        trailing={(index) =>
-          index === 0 ? (
-            <span className="type-overline !text-accent">Coordina</span>
-          ) : null
-        }
       />
     </div>
   );
@@ -306,177 +266,53 @@ export function StepDates({ answers, patch, onNext }: StepProps) {
   );
 }
 
-export function StepWho({ answers, patch, onNext }: StepProps) {
-  const selfIndex = answers.selfIndex;
-
-  // Enter with focus outside the list (e.g. right after the step mounts)
-  // advances once someone is picked; a focused button handles its own Enter.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Enter" || selfIndex === null) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("button")) return;
-      event.preventDefault();
-      onNext();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [selfIndex, onNext]);
-
+/**
+ * "¿Quién eres?" — one click picks you AND advances; no confirm button.
+ * The wizard passes `onPick` so selection + navigation land in one state
+ * update (a patch-then-next pair would read a stale validity check).
+ */
+export function StepWho({
+  answers,
+  onPick,
+}: {
+  answers: SetupAnswers;
+  onPick: (index: number) => void;
+}) {
   return (
     <div>
-      <WizardHeading overline="Tú" question="¿Quién eres?" />
+      <WizardHeading
+        overline="Tú"
+        question="¿Quién eres?"
+        helper="Toca tu nombre para continuar."
+      />
 
-      <ul className="divide-y divide-line border-y border-line">
+      <ul className="flex flex-col gap-2">
         {answers.memberNames.map((name, index) => {
-          const selected = selfIndex === index;
+          // Same palette order the built project will assign (plan.ts cycles
+          // the palette in member order), so the preview colours match.
+          const color = MEMBER_COLORS[index % MEMBER_COLORS.length];
           return (
             <li key={name}>
               <button
                 type="button"
-                aria-pressed={selected}
-                onClick={() => patch({ selfIndex: index })}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter" || !selected) return;
-                  e.preventDefault();
-                  onNext();
-                }}
-                className={cn(
-                  "flex w-full items-center gap-4 rounded-lg px-2 py-3 text-left transition-colors",
-                  selected ? "bg-surface-2" : "hover:bg-surface-2/60",
-                )}
+                onClick={() => onPick(index)}
+                className="flex w-full items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-left shadow-card transition-colors hover:border-line-strong hover:bg-surface-2"
               >
-                <span className="w-6 text-sm tabular-nums text-muted-2">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
                 <span
-                  className={cn(
-                    "flex-1 text-[15px] font-medium",
-                    selected ? "text-ink" : "text-ink-2",
-                  )}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold"
+                  style={{ backgroundColor: color.bg, color: color.ink }}
                 >
+                  {initialsFromName(name)}
+                </span>
+                <span className="flex-1 text-[15px] font-medium text-ink">
                   {name}
                 </span>
-                {selected && (
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="type-overline !text-accent">Tú</span>
-                    <Check className="h-4 w-4 text-accent" />
-                  </span>
-                )}
+                <span className="text-xs font-medium text-accent">Soy yo</span>
               </button>
             </li>
           );
         })}
       </ul>
-    </div>
-  );
-}
-
-const STRENGTH_SUGGESTIONS = [
-  "Redacción",
-  "Diseño",
-  "Presentar en público",
-  "Organización",
-  "Datos y análisis",
-  "Programación",
-];
-
-/**
- * Suggestion chips + free input. Shared by the wizard and the who-are-you
- * screen. `onChange` takes an updater so rapid toggles never read stale state;
- * `onSubmit` fires on Enter over an empty input.
- */
-export function StrengthsPicker({
-  value,
-  onChange,
-  onSubmit,
-}: {
-  value: string[];
-  onChange: (updater: (prev: string[]) => string[]) => void;
-  onSubmit: () => void;
-}) {
-  const [draft, setDraft] = useState("");
-
-  const toggle = (item: string) =>
-    onChange((prev) =>
-      prev.includes(item) ? prev.filter((s) => s !== item) : [...prev, item],
-    );
-
-  const addDraft = () => {
-    const item = draft.trim();
-    if (!item) return;
-    onChange((prev) => (prev.includes(item) ? prev : [...prev, item]));
-    setDraft("");
-  };
-
-  const custom = value.filter((s) => !STRENGTH_SUGGESTIONS.includes(s));
-
-  return (
-    <div>
-      <div className="mb-5 flex flex-wrap gap-2">
-        {STRENGTH_SUGGESTIONS.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            onClick={() => toggle(suggestion)}
-            className={chipClass(value.includes(suggestion))}
-          >
-            {suggestion}
-          </button>
-        ))}
-      </div>
-
-      <input
-        autoFocus
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter") return;
-          e.preventDefault();
-          if (draft.trim()) addDraft();
-          else onSubmit();
-        }}
-        placeholder="Otra fortaleza…"
-        aria-label="Añadir fortaleza"
-        className={inputClass}
-      />
-
-      {custom.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {custom.map((strength) => (
-            <span
-              key={strength}
-              className="inline-flex items-center gap-1.5 rounded-full bg-ink py-1.5 pl-4 pr-2 text-sm font-medium text-canvas"
-            >
-              {strength}
-              <button
-                type="button"
-                onClick={() => toggle(strength)}
-                aria-label={`Quitar ${strength}`}
-                className="grid h-5 w-5 place-items-center rounded-full transition-colors hover:bg-ink-hover"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function StepStrengths({ answers, patch, onNext }: StepProps) {
-  return (
-    <div>
-      <WizardHeading overline="Tus fortalezas" question="¿En qué destacas?" />
-
-      <StrengthsPicker
-        value={answers.selfStrengths}
-        onChange={(updater) =>
-          patch((prev) => ({ selfStrengths: updater(prev.selfStrengths) }))
-        }
-        onSubmit={onNext}
-      />
     </div>
   );
 }

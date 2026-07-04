@@ -9,6 +9,8 @@ interface InlineTextProps {
   multiline?: boolean;
   ariaLabel?: string;
   className?: string;
+  /** Focus on mount — for "type right away" flows (e.g. a just-created task). */
+  autoFocus?: boolean;
 }
 
 const autoGrow = (el: HTMLTextAreaElement | null) => {
@@ -29,6 +31,7 @@ export function InlineText({
   multiline = false,
   ariaLabel,
   className,
+  autoFocus = false,
 }: InlineTextProps) {
   const commit = (next: string) => {
     if (next !== value) onCommit(next);
@@ -44,6 +47,7 @@ export function InlineText({
       <textarea
         key={value}
         ref={autoGrow}
+        autoFocus={autoFocus}
         aria-label={ariaLabel}
         defaultValue={value}
         placeholder={placeholder}
@@ -58,6 +62,7 @@ export function InlineText({
   return (
     <input
       key={value}
+      autoFocus={autoFocus}
       aria-label={ariaLabel}
       defaultValue={value}
       placeholder={placeholder}

@@ -1,21 +1,19 @@
 "use client";
 
-import { Check, Crown, Trash2 } from "lucide-react";
+import { Check, Trash2 } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { Avatar } from "@/components/ui/Avatar";
 import { InlineText } from "@/components/ui/InlineText";
 import { IconButton } from "@/components/ui/IconButton";
 import { Popover } from "@/components/ui/Popover";
 import { MEMBER_COLORS } from "@/lib/utils/colors";
-import { cn } from "@/lib/utils/cn";
 import type { TeamMember } from "@/lib/data/types";
 
 interface MemberCardProps {
   member: TeamMember;
-  onToggleCoordinator: (member: TeamMember) => void;
 }
 
-export function MemberCard({ member, onToggleCoordinator }: MemberCardProps) {
+export function MemberCard({ member }: MemberCardProps) {
   const { updateMember, deleteMember } = useProject();
 
   const handleDelete = () => {
@@ -83,16 +81,6 @@ export function MemberCard({ member, onToggleCoordinator }: MemberCardProps) {
 
         <div className="flex shrink-0 items-center">
           <IconButton
-            label={member.isCoordinator ? "Quitar coordinación" : "Marcar coordinador"}
-            size="sm"
-            onClick={() => onToggleCoordinator(member)}
-            className={cn(
-              member.isCoordinator && "bg-accent-soft text-accent hover:text-accent",
-            )}
-          >
-            <Crown className="h-4 w-4" />
-          </IconButton>
-          <IconButton
             label="Eliminar miembro"
             size="sm"
             tone="danger"
@@ -110,13 +98,6 @@ export function MemberCard({ member, onToggleCoordinator }: MemberCardProps) {
         ariaLabel="Correo del miembro"
         className="-ml-1.5 rounded-lg bg-surface-2/60 text-xs text-ink-2"
       />
-
-      {member.isCoordinator && (
-        <span className="inline-flex w-fit items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
-          <Crown className="h-3 w-3" />
-          Coordinador/a
-        </span>
-      )}
     </div>
   );
 }

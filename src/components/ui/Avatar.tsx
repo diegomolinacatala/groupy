@@ -12,7 +12,7 @@ const SIZES = {
 } as const;
 
 interface AvatarProps {
-  member: Pick<TeamMember, "name" | "colorKey" | "isCoordinator">;
+  member: Pick<TeamMember, "name" | "colorKey">;
   size?: keyof typeof SIZES;
   ring?: boolean;
   title?: string;

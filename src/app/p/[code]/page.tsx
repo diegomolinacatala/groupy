@@ -41,7 +41,10 @@ export default async function CloudProjectPage({
 
   return (
     <CloudProjectProvider project={result.project} ctx={result.ctx}>
-      <DashboardUiProvider initialFocusMemberId={result.ctx.memberId}>
+      <DashboardUiProvider
+        scope={`p:${result.ctx.joinCode}`}
+        initialFocusMemberId={result.ctx.memberId}
+      >
         <DashboardShell />
       </DashboardUiProvider>
     </CloudProjectProvider>

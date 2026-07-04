@@ -1,11 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarClock, Check, Link2, Plus } from "lucide-react";
+import {
+  CalendarClock,
+  Check,
+  ChevronDown,
+  CircleUserRound,
+  Link2,
+  Plus,
+  Users,
+} from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import { InlineText } from "@/components/ui/InlineText";
-import { AvatarStack } from "@/components/ui/Avatar";
+import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { Badge } from "@/components/ui/Badge";
@@ -27,6 +35,9 @@ const STATUS_COLOR: Record<ProjectStatus, { color: string; soft: string }> = {
 };
 
 const STATUS_ORDER: ProjectStatus[] = ["active", "in_review", "closed"];
+
+const firstName = (name: string): string =>
+  name.trim().split(/\s+/)[0] || name;
 
 export function Topbar() {
   const { project, updateProject, addModule, joinCode } = useProject();
@@ -113,16 +124,9 @@ export function Topbar() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {joinCode && <ShareCodeChip code={joinCode} />}
-          <button
-            type="button"
-            onClick={() => setView("team")}
-            className="rounded-full p-0.5 transition-transform hover:scale-105"
-            aria-label="Ver equipo"
-          >
-            <AvatarStack members={project.members} size="md" max={4} />
-          </button>
+          <IdentityChip />
           <Button variant="primary" onClick={handleAdd}>
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">Tarea</span>
@@ -130,6 +134,120 @@ export function Topbar() {
         </div>
       </div>
     </header>
+  );
+}
+
+/**
+ * Who am I, always in sight. Shows your avatar + name; the popover lists the
+ * team with you marked. In local (demo) mode clicking a teammate switches the
+ * device to that identity; in cloud mode the identity is the claimed member
+ * and stays fixed to this device.
+ */
+function IdentityChip() {
+  const { project, mode, currentMemberId, setCurrentMember } = useProject();
+  const { setView } = useDashboardUi();
+
+  const me = project.members.find((m) => m.id === currentMemberId) ?? null;
+  const canSwitch = mode === "local";
+
+  return (
+    <Popover
+      align="end"
+      className="w-64"
+      trigger={({ toggle }) => (
+        <button
+          type="button"
+          onClick={toggle}
+          title={me ? `Estás dentro como ${me.name}` : "Elige quién eres"}
+          className={cn(
+            "inline-flex h-9 items-center gap-2 rounded-xl border px-2.5 text-xs font-medium transition-colors",
+            me
+              ? "border-line bg-surface text-ink-2 hover:bg-surface-2"
+              : "border-accent/60 bg-accent-soft text-accent hover:border-accent",
+          )}
+        >
+          {me ? (
+            <>
+              <Avatar member={me} size="xs" />
+              <span className="hidden max-w-28 truncate sm:inline">
+                {firstName(me.name)}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            </>
+          ) : (
+            <>
+              <CircleUserRound className="h-4 w-4" />
+              ¿Quién eres?
+            </>
+          )}
+        </button>
+      )}
+    >
+      {(close) => (
+        <div className="flex flex-col">
+          <p className="px-2 pb-2 pt-1 text-xs leading-relaxed text-muted">
+            {me
+              ? mode === "cloud"
+                ? `En este dispositivo eres ${firstName(me.name)}.`
+                : "Estás usando la demo como…"
+              : "Elige quién eres para ver tu vista Principal."}
+          </p>
+
+          <div className="flex flex-col gap-0.5">
+            {project.members.map((member) => {
+              const isMe = member.id === currentMemberId;
+              const clickable = canSwitch || isMe;
+              return (
+                <button
+                  key={member.id}
+                  type="button"
+                  disabled={!clickable}
+                  onClick={() => {
+                    if (canSwitch && !isMe) setCurrentMember(member.id);
+                    close();
+                  }}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
+                    isMe && "bg-surface-2",
+                    clickable ? "hover:bg-surface-2" : "opacity-70",
+                  )}
+                >
+                  <Avatar member={member} size="sm" />
+                  <span className="min-w-0 flex-1 truncate text-ink">
+                    {member.name}
+                  </span>
+                  {isMe && (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-accent">
+                      <Check className="h-3.5 w-3.5" />
+                      Tú
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-1.5 border-t border-line pt-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setView("team");
+                close();
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-ink-2 transition-colors hover:bg-surface-2"
+            >
+              <Users className="h-4 w-4 text-muted" />
+              Ver el equipo
+            </button>
+            <p className="px-2 pb-1 pt-1.5 text-[11px] leading-relaxed text-muted-2">
+              {mode === "cloud"
+                ? "Tu identidad queda vinculada a este dispositivo."
+                : "En la demo puedes cambiar de persona con un clic."}
+            </p>
+          </div>
+        </div>
+      )}
+    </Popover>
   );
 }
 

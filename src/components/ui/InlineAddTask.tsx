@@ -58,6 +58,9 @@ export function InlineAddTask({
   return (
     <input
       ref={inputRef}
+      // Belt and braces with the focus effect: the field must be ready to
+      // type the instant it appears — click "+", write, Enter.
+      autoFocus
       value={value}
       onChange={(event) => setValue(event.target.value)}
       onKeyDown={(event) => {

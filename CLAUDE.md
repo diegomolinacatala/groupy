@@ -43,15 +43,21 @@ Supabase Anonymous Auth creates a persistent per-device session; the student onl
 `display_name` + `email` as profile data on their `group_members` row. RLS then works via
 `auth.uid()` for both roles — no parallel token system.
 
-## Current state (updated 2026-07-04, flow-model cloud sync closed in code)
+## Current state (updated 2026-07-04 late, friction pass: wizard · identity · tab memory)
 
 Two layers exist side by side:
 
 1. **Local prototype — demo mode, kept (locked decision).** A Spanish, zero-login dashboard
    backed entirely by `localStorage` (`src/lib/data/`, seeded with dummy data; storage key
    bumped to `groupy:project:v2`, local identity in `groupy:me:v1`). Lives at `/dashboard`.
-   **Central tabs: Personal, Organización (landing), Mapa** — calendar and board are
-   secondary ("Más vistas" in the sidebar).
+   **Central tabs: Principal (home), Organización, Mapa** — calendar and board are
+   secondary ("Más vistas" in the sidebar). "Fortalezas" left the nav (see friction pass).
+   **Tab memory** (`dashboard-ui.tsx`, per-scope: `"local"` or `p:<code>`): the active tab
+   lives in sessionStorage (`groupy:view:<scope>`) so a **reload stays on the same tab**;
+   a localStorage flag (`groupy:visited:<scope>`) makes **Organización the landing only the
+   very first time** a project is opened on the device — every return lands on Principal.
+   Read via `useSyncExternalStore` (SSR-safe); `viewReady` gates the shell behind
+   `LoadingScreen` for the one frame before storage is read.
 2. **Cloud slice — LIVE end to end.** Create → share code → anonymous join → shared dashboard:
    - **Migrations pushed** (region `eu-west-1`): `20260702101232_schema_foundation.sql` (9 tables,
      full RLS matrix, `app.*` helpers) + `20260702150000_cloud_slice.sql`. The second one:
@@ -70,10 +76,11 @@ Two layers exist side by side:
      (`mirror.ts`), `CloudProjectProvider`. `ProjectProvider` accepts an optional `cloud` binding —
      same reducer + UI in both modes; context exposes `mode` and `joinCode`.
    - **Routes/UI**: `/p/[code]` (server component → not-found / who-are-you / dashboard), homepage
-     join-by-code + "volver a «título»" shortcut. The wizard saves at the final click (button busy
-     state, no themed saving screen — `GeneratingScreen` was deleted) then claims the chosen member
-     and pushes their strengths; save-locally fallback on error. Topbar shows a copy-link share chip
-     in cloud mode.
+     join-by-code + "volver a «título»" shortcut. The wizard saves behind a full-screen
+     `SavingScreen` (spinner + rotating copy, **min 2s**, stays up until the route loads — the
+     user asked the loading screen back after "¿Qué hay que hacer?"); create → claim →
+     `/p/[code]`; save-locally fallback on error. Topbar shows a copy-link share chip in cloud
+     mode.
    - **RLS validated behaviorally with dummy data**: 37/37 checks across creator / member /
      stranger / no-session (strangers get only the code preview; identities can't be hijacked).
    - **Anonymous sign-ins are enabled** in the hosted dashboard (prerequisite satisfied).
@@ -98,11 +105,16 @@ project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mec
   (all its tasks done; empty never holds the chain). Drawn as a → connector between
   diamonds — never as a padlock.
 - Locks stay **soft** (UI-only guards; the reducer never forbids a status change).
-- **Views** (all drag-first, dnd-kit): `PersonalView` — identity picker (local) or claimed
-  member (cloud); "Disponibles" (open padlock, advance button, sortable) / "Bloqueadas"
-  (closed padlock + who/what blocks); plus a **right rail** (lg+) with Entrega countdown
-  + time bar, Tu avance, "Te esperan" (my tasks others wait on → opens the task) and
-  quick actions (nueva tarea para mí, ver el mapa). `OrganizationView` (landing) — "Sin
+- **Views** (all drag-first, dnd-kit): `PersonalView` = the **Principal** tab, redesigned
+  2026-07-04 as the project home: "Hola, {nombre}" greeting + one-line summary + compact
+  Entrega card (countdown + time-gone bar); **"Ahora"** — the FIRST available task as a
+  hero card (owner-tinted left edge, big Empezar/Marcar hecha button); **"A continuación"**
+  — the rest, compact sortable rows (one SortableContext with the hero: drag anything to
+  the top to make it the hero); "Bloqueadas" (ghost rows + who/what blocks); dedicated
+  empty states (sin tareas → CTA a Organización + quick add; todo hecho). **Right rail**
+  (lg+): Tu avance (big %), "Te esperan" (my tasks others wait on → opens the task),
+  nueva tarea para mí, ver el mapa, "Repartir n sin asignar". Without an identity (local)
+  the view is a one-click `IdentityGate`. `OrganizationView` — "Sin
   asignar" strip (+ a "Reiniciar reparto" button, shown only while something is
   assigned, that returns EVERY task to the strip after a confirm) + one tinted column
   per member; drag to assign (single-owner); chips HUG their text (width = title),
@@ -133,18 +145,23 @@ project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mec
   rule). A "Mis tareas" scope fades other people's tasks to ghosts (local mode asks
   "¿quién eres?" first).
 - **Task popup** (`TaskModal.tsx`, replaced the right SlideOver/`ModuleEditor` —
-  clicking any task anywhere opens it): the task as a BIG center card — the
-  protagonist (wide center column, xl title, width still scales with importance),
+  clicking any task anywhere opens it): the task as a **compact** center card
+  (~300px base — it was 430 and ate the row; width still scales with importance,
+  title autofocuses when empty so "+ Tarea" is type-and-Enter),
   "Depende de" column on the left, "Bloquea a" on the right (chips navigate the
   graph; the + pickers exclude cycles and render candidates as a loose pile of
   chips — owner tint, importance = size, stable slight rotation, no link icon),
   and below the graph TWO columns: details on the left (estado, fecha, bloque, tipo,
   importancia, responsables, descripción), the **checklist as the protagonist on the
   right** — its own surface card with an n/m counter, progress bar and the add box.
-- **Wizard** (6 steps): título+objetivos → equipo → plazo → ¿quién eres? → tus fortalezas →
-  tareas. Continue button carries a ↵ icon (no "o pulsa Enter" copy). Cloud save happens at
-  the final click behind the button (create → claim → strengths → `/p/[code]`), landing on
-  Organización. `WhoAreYouScreen` gained the personal-strengths step after claiming.
+- **Wizard** (4 steps since the friction pass): equipo → plazo → ¿quién eres? → tareas.
+  NO title question — projects start as `DEFAULT_PROJECT_TITLE` ("Trabajo en grupo",
+  renamed in place from the topbar) — and NO strengths step. "¿Quién eres?" advances on
+  the click itself (`onPick` sets selfIndex + step together; a patch-then-next pair would
+  read a stale validity check), so that step has no Continue button. Cloud save happens
+  behind the full-screen `SavingScreen` (create → claim → `/p/[code]`), landing on
+  Organización. `WhoAreYouScreen` is now ONE click: tap your name → claim → "Entrando
+  como…" spinner → `router.refresh()` swaps in the dashboard (no strengths step).
 - **Cloud persistence of the new model**: a block is stored as a `tasks` row of
   `type='milestone'` (title = name, `sort_order` = order, **mode encoded in
   `description`**); `groups.strengths` jsonb now holds `{ [memberId]: string[] }` (legacy
@@ -160,10 +177,32 @@ project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mec
   sync-killer**: `projectModuleSchema.createdAt` needed `z.iso.datetime({ offset:
   true })` — Supabase returns `+00:00` timestamps (not `Z`), so every edit to a
   cloud-LOADED task failed Zod and the mirror dropped it (that's why assignments
-  "disappeared on reload"). **Migration push pending** (no Supabase credentials on
-  this machine): `npx supabase link --project-ref <ref>` + `npx supabase db push`
-  BEFORE running the new code against the cloud — the writers now send the new
-  columns unconditionally.
+  "disappeared on reload"). **Migration pushed and verified behaviorally 2026-07-04**:
+  wizard create with the new columns, task upsert with a title edit, and reload-read
+  all round-trip against the hosted DB (test projects `R88U2TB` / `4ATLB3S` are junk
+  dummy data, safe to delete).
+
+### Friction pass — 2026-07-04 (wizard, users, tab memory)
+
+- **Strengths are OUT of the UI for now** (user call, will return later): wizard step,
+  who-are-you step and the "Fortalezas" nav entry are gone. The data model, cloud sync
+  (`groups.strengths`, `setCloudMemberStrengths`) and `StrengthsView.tsx` (unrouted)
+  stay intact for the re-add.
+- **Coordinator is gone from the UI** (no crown in Equipo, no "coordina" copy in the
+  wizard; seed/plan write `isCoordinator: false`). The field stays in the model and DB
+  rows for compatibility — do not build on it.
+- **Identity system**: an `IdentityChip` in the topbar always shows who you are
+  (avatar + first name; accent "¿Quién eres?" state when unpicked in local). Its popover
+  lists the team with "Tú" marked; **local mode switches identity with one click**
+  (demo affordance), **cloud mode is fixed** ("Tu identidad queda vinculada a este
+  dispositivo" — `claim_member` refuses a second row per uid) and says so. The chip
+  replaced the topbar AvatarStack; "Ver el equipo" lives inside the popover.
+- **Type-right-away**: `InlineText` gained `autoFocus` (TaskModal title uses it when the
+  title is empty → "+ Tarea" anywhere is click → type → Enter), and `InlineAddTask`
+  focuses its input on mount (attribute + effect).
+- Verification note: React commits (onBlur/onKeyDown) do NOT fire from synthetic
+  `dispatchEvent` in this stack — drive real interactions (preview_fill/click) when
+  testing, or you'll chase phantom "sync" bugs.
 
 ## Scope
 

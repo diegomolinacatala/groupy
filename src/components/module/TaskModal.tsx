@@ -188,9 +188,9 @@ export function TaskModal() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-6 md:px-8">
-              {/* Depende de ← [ LA TAREA ] → Bloquea a. The task itself is
-                  the protagonist: the center column dominates the row. */}
-              <div className="grid gap-x-5 gap-y-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.9fr)_minmax(0,1fr)] md:items-center">
+              {/* Depende de ← [ LA TAREA ] → Bloquea a. The task keeps center
+                  stage but stays compact — the columns breathe around it. */}
+              <div className="grid gap-x-5 gap-y-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] md:items-center">
                 <div className="order-first md:order-none md:col-start-2">
                   <TaskCard project={project} module={activeModule} />
                 </div>
@@ -569,28 +569,33 @@ function TaskCard({
   return (
     <div
       style={{
-        width: `min(100%, ${Math.round(430 * scale)}px)`,
+        width: `min(100%, ${Math.round(300 * scale)}px)`,
         borderLeftColor: ownerColor?.bg ?? "var(--color-line-strong)",
         backgroundColor: ownerColor ? ownerColor.bg + "0F" : undefined,
       }}
-      className="mx-auto rounded-2xl border border-line border-l-[5px] bg-surface p-5 shadow-pop md:p-6"
+      className="mx-auto rounded-2xl border border-line border-l-[5px] bg-surface p-4 shadow-pop md:p-5"
     >
       <div className="flex items-start gap-2.5">
-        <DocTypeBadge docType={module.docType} className="mt-1.5" />
+        <DocTypeBadge docType={module.docType} className="mt-1" />
         <InlineText
           value={module.title}
           onCommit={(title) => updateModule(module.id, { title })}
           placeholder="Título de la tarea"
           ariaLabel="Título de la tarea"
+          // A just-created task opens ready to type: name it, press Enter.
+          autoFocus={module.title === ""}
           className={cn(
-            "-ml-1 min-w-0 flex-1 text-xl font-semibold leading-snug md:text-2xl",
+            "-ml-1 min-w-0 flex-1 text-lg font-semibold leading-snug md:text-xl",
             done && "text-muted line-through",
           )}
         />
         {done ? (
-          <Check className="mt-1.5 h-5 w-5 shrink-0 text-done" strokeWidth={3} />
+          <Check
+            className="mt-1 h-[18px] w-[18px] shrink-0 text-done"
+            strokeWidth={3}
+          />
         ) : (
-          <LockOpen className="mt-1.5 h-5 w-5 shrink-0 text-muted" />
+          <LockOpen className="mt-1 h-[18px] w-[18px] shrink-0 text-muted" />
         )}
       </div>
 

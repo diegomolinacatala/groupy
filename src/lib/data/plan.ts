@@ -7,16 +7,16 @@ import { nextMemberColorKey } from "@/lib/utils/colors";
 // inside a single starting block. Assignment happens by dragging in the
 // Organización view.
 
+/** The wizard no longer asks for a title — it starts as this and is edited
+ *  in place from the dashboard topbar whenever the team wants. */
+export const DEFAULT_PROJECT_TITLE = "Trabajo en grupo";
+
 export interface SetupAnswers {
-  title: string;
-  description: string; // objetivos
-  memberNames: string[]; // first entry acts as coordinator
+  memberNames: string[];
   startDate: string; // "yyyy-mm-dd"
   dueDate: string; // "yyyy-mm-dd"
   /** "¿Quién eres?" — index into memberNames; null until chosen. */
   selfIndex: number | null;
-  /** Personal strengths of the chosen member. */
-  selfStrengths: string[];
   taskNames: string[];
 }
 
@@ -26,20 +26,17 @@ function uid(): string {
 
 function buildMembers(answers: SetupAnswers): TeamMember[] {
   const members: TeamMember[] = [];
-  for (const [index, rawName] of answers.memberNames.entries()) {
+  for (const rawName of answers.memberNames) {
     const name = rawName.trim();
     if (!name) continue;
     members.push({
       id: uid(),
       name,
       email: "",
-      role: index === 0 ? "Coordinación" : "",
+      role: "",
       colorKey: nextMemberColorKey(members.map((m) => m.colorKey)),
-      isCoordinator: index === 0,
-      strengths:
-        index === answers.selfIndex
-          ? answers.selfStrengths.map((s) => s.trim()).filter(Boolean)
-          : [],
+      isCoordinator: false,
+      strengths: [],
     });
   }
   return members;
@@ -74,8 +71,8 @@ export function buildProjectPlan(answers: SetupAnswers): Project {
 
   return {
     id: uid(),
-    title: answers.title.trim() || "Trabajo en grupo",
-    description: answers.description.trim(),
+    title: DEFAULT_PROJECT_TITLE,
+    description: "",
     startDate: answers.startDate,
     dueDate: answers.dueDate,
     status: "active",

@@ -27,9 +27,9 @@ export function createSeedProject(): Project {
     id: uid(),
     name: "Alba Ferrer",
     email: "alba.ferrer@example.edu",
-    role: "Coordinación",
+    role: "Redacción",
     colorKey: "violet",
-    isCoordinator: true,
+    isCoordinator: false,
     strengths: ["Organización", "Redacción"],
   };
   const bruno: TeamMember = {

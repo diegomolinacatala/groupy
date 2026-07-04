@@ -1,8 +1,7 @@
 import {
   CalendarDays,
-  CircleUser,
   Columns3,
-  Sparkles,
+  Home,
   SquareKanban,
   Users,
   Waypoints,
@@ -22,13 +21,13 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-// Personal / Organización / Mapa are the central tabs; calendar and board
+// Principal / Organización / Mapa are the central tabs; calendar and board
 // stay as secondary planning views.
 export const NAV_GROUPS: NavGroup[] = [
   {
     title: null,
     items: [
-      { view: "personal", label: "Personal", icon: CircleUser },
+      { view: "personal", label: "Principal", icon: Home },
       { view: "organization", label: "Organización", icon: Columns3 },
       { view: "map", label: "Mapa", icon: Waypoints },
     ],
@@ -39,7 +38,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { view: "calendar", label: "Calendario", icon: CalendarDays },
       { view: "board", label: "Tablero", icon: SquareKanban },
       { view: "team", label: "Equipo", icon: Users },
-      { view: "strengths", label: "Fortalezas", icon: Sparkles },
     ],
   },
 ];

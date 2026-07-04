@@ -3,21 +3,9 @@
 import { UserPlus } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { MemberCard } from "./MemberCard";
-import type { TeamMember } from "@/lib/data/types";
 
 export function TeamView() {
-  const { project, addMember, updateMember } = useProject();
-
-  const handleToggleCoordinator = (target: TeamMember) => {
-    const enabling = !target.isCoordinator;
-    // Keep a single coordinator: enabling one clears the others.
-    for (const member of project.members) {
-      const shouldBe = enabling && member.id === target.id;
-      if (member.isCoordinator !== shouldBe) {
-        updateMember(member.id, { isCoordinator: shouldBe });
-      }
-    }
-  };
+  const { project, addMember } = useProject();
 
   return (
     <div className="flex h-full flex-col gap-4 p-4 md:p-6">
@@ -34,11 +22,7 @@ export function TeamView() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {project.members.map((member) => (
-          <MemberCard
-            key={member.id}
-            member={member}
-            onToggleCoordinator={handleToggleCoordinator}
-          />
+          <MemberCard key={member.id} member={member} />
         ))}
 
         <button

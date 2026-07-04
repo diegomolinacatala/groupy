@@ -11,14 +11,13 @@ import { MapView } from "@/components/map/MapView";
 import { CalendarView } from "@/components/calendar/CalendarView";
 import { BoardView } from "@/components/board/BoardView";
 import { TeamView } from "@/components/team/TeamView";
-import { StrengthsView } from "@/components/strengths/StrengthsView";
 import { TaskModal } from "@/components/module/TaskModal";
 
 export function DashboardShell() {
   const { isReady } = useProject();
-  const { view } = useDashboardUi();
+  const { view, viewReady } = useDashboardUi();
 
-  if (!isReady) return <LoadingScreen />;
+  if (!isReady || !viewReady) return <LoadingScreen />;
 
   return (
     <div className="flex h-screen overflow-hidden bg-canvas">
@@ -32,7 +31,6 @@ export function DashboardShell() {
           {view === "calendar" && <CalendarView />}
           {view === "board" && <BoardView />}
           {view === "team" && <TeamView />}
-          {view === "strengths" && <StrengthsView />}
         </main>
       </div>
       <TaskModal />
