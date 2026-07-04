@@ -106,15 +106,19 @@ project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mec
   diamonds — never as a padlock.
 - Locks stay **soft** (UI-only guards; the reducer never forbids a status change).
 - **Views** (all drag-first, dnd-kit): `PersonalView` = the **Principal** tab, redesigned
-  2026-07-04 as the project home: "Hola, {nombre}" greeting + one-line summary + compact
-  Entrega card (countdown + time-gone bar); **"Ahora"** — the FIRST available task as a
-  hero card (owner-tinted left edge, big Empezar/Marcar hecha button); **"A continuación"**
-  — the rest, compact sortable rows (one SortableContext with the hero: drag anything to
-  the top to make it the hero); "Bloqueadas" (ghost rows + who/what blocks); dedicated
-  empty states (sin tareas → CTA a Organización + quick add; todo hecho). **Right rail**
-  (lg+): Tu avance (big %), "Te esperan" (my tasks others wait on → opens the task),
-  nueva tarea para mí, ver el mapa, "Repartir n sin asignar". Without an identity (local)
-  the view is a one-click `IdentityGate`. `OrganizationView` — "Sin
+  2026-07-04 as the project home: header is JUST the "Hola, {nombre}" greeting +
+  one-line summary (no floating card — the Entrega card used to sit top-right here,
+  disconnected from the rail; moved into the rail 2026-07-04 late so the right side is
+  one aligned column); **"Ahora"** — the FIRST available task as a hero card (owner-tinted
+  left edge, big Empezar/Marcar hecha button); **"A continuación"** — the rest, compact
+  sortable rows (one SortableContext with the hero: drag anything to the top to make it
+  the hero); "Bloqueadas" (ghost rows + who/what blocks); dedicated empty states (sin
+  tareas → CTA a Organización + quick add; todo hecho). **Right rail** (lg+), one aligned
+  stack of matching cards: **Entrega** (countdown + date + time-gone bar) mirroring **Tu
+  avance** (big %, progress bar) — both overline + big display value + bar — then "Te
+  esperan" (my tasks others wait on → opens the task), nueva tarea para mí, ver el mapa,
+  "Repartir n sin asignar". Without an identity (local) the view is a one-click
+  `IdentityGate`. `OrganizationView` — "Sin
   asignar" strip (+ a "Reiniciar reparto" button, shown only while something is
   assigned, that returns EVERY task to the strip after a confirm) + one tinted column
   per member; drag to assign (single-owner); chips HUG their text (width = title),

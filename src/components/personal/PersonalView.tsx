@@ -168,15 +168,12 @@ export function PersonalView() {
   return (
     <div className="p-4 md:p-6">
       <div className="mx-auto w-full max-w-5xl">
-        <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-          <div className="min-w-0">
-            <p className="type-overline">Principal</p>
-            <h2 className="type-display mt-1 text-3xl text-ink">
-              Hola, {firstName(me.name)}
-            </h2>
-            <p className="mt-1.5 text-sm text-muted">{summary}</p>
-          </div>
-          <DeadlineCard project={project} />
+        <header>
+          <p className="type-overline">Principal</p>
+          <h2 className="type-display mt-1 text-3xl text-ink">
+            Hola, {firstName(me.name)}
+          </h2>
+          <p className="mt-1.5 text-sm text-muted">{summary}</p>
         </header>
 
         <div className="mt-7 flex items-start gap-8">
@@ -318,41 +315,6 @@ function IdentityGate({
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-// --- Header pieces -----------------------------------------------------------
-
-/** Compact deadline card: countdown + how much of the window is gone. */
-function DeadlineCard({ project }: { project: Project }) {
-  if (!project.dueDate) return null;
-
-  const timeFraction = (() => {
-    if (!project.startDate) return null;
-    const total = daysBetweenISO(project.startDate, project.dueDate);
-    if (total <= 0) return null;
-    const gone = daysBetweenISO(project.startDate, todayISO());
-    return Math.min(1, Math.max(0, gone / total));
-  })();
-
-  return (
-    <div className="w-56 rounded-2xl border border-line bg-surface px-4 py-3 shadow-card max-sm:hidden">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="type-overline">Entrega</span>
-        <span className="text-xs text-muted">{formatShort(project.dueDate)}</span>
-      </div>
-      <p className="type-display mt-0.5 text-lg text-ink">
-        {deadlineLabel(project.dueDate)}
-      </p>
-      {timeFraction !== null && (
-        <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-3">
-          <div
-            className="h-full rounded-full bg-ink transition-[width] duration-500"
-            style={{ width: `${Math.round(timeFraction * 100)}%` }}
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -723,8 +685,39 @@ function PersonalRail({
     (m) => m.assigneeIds.length === 0,
   ).length;
 
+  // Share of the project window already spent — the pressure gauge.
+  const timeFraction = (() => {
+    if (!project.startDate || !project.dueDate) return null;
+    const total = daysBetweenISO(project.startDate, project.dueDate);
+    if (total <= 0) return null;
+    const gone = daysBetweenISO(project.startDate, todayISO());
+    return Math.min(1, Math.max(0, gone / total));
+  })();
+
   return (
     <aside className="sticky top-6 hidden w-72 shrink-0 flex-col gap-3 lg:flex">
+      {project.dueDate && (
+        <section className="rounded-2xl border border-line bg-surface p-4 shadow-card">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="type-overline">Entrega</p>
+            <span className="text-xs text-muted">
+              {formatShort(project.dueDate)}
+            </span>
+          </div>
+          <p className="type-display mt-1 text-2xl text-ink">
+            {deadlineLabel(project.dueDate)}
+          </p>
+          {timeFraction !== null && (
+            <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-3">
+              <div
+                className="h-full rounded-full bg-ink transition-[width] duration-500"
+                style={{ width: `${Math.round(timeFraction * 100)}%` }}
+              />
+            </div>
+          )}
+        </section>
+      )}
+
       <section className="rounded-2xl border border-line bg-surface p-4 shadow-card">
         <div className="flex items-baseline justify-between">
           <p className="type-overline">Tu avance</p>
