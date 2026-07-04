@@ -151,9 +151,14 @@ export function clampImportance(value: number): number {
 }
 
 /**
- * Visual scale for a task's importance: 1.0 at the default, ~0.86 at 1,
- * ~1.35 at 10. Sensible range — importance is a nuance, not a shout.
+ * Visual scale for a task's importance: 1.0 at the default, ~0.72 at 1,
+ * ~1.75 at 10. Asymmetric on purpose — big tasks grow faster (steeper slope
+ * above the default) than small ones shrink, so the largest reads ~30% bigger
+ * than a flat curve would give while the smallest stays legible. The point is
+ * more size DIVERSITY between tasks, not a shout.
  */
 export function importanceScale(value: number): number {
-  return 1 + (clampImportance(value) - IMPORTANCE_DEFAULT) * 0.07;
+  const delta = clampImportance(value) - IMPORTANCE_DEFAULT;
+  const slope = delta >= 0 ? 0.15 : 0.07;
+  return 1 + delta * slope;
 }

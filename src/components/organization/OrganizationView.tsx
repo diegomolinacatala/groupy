@@ -16,10 +16,14 @@ import {
   rectSortingStrategy,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Scale } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
-import type { ProjectModule, TeamMember } from "@/lib/data/types";
+import {
+  clampImportance,
+  type ProjectModule,
+  type TeamMember,
+} from "@/lib/data/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { InlineAddTask } from "@/components/ui/InlineAddTask";
 import { colorForKey } from "@/lib/utils/colors";
@@ -40,6 +44,51 @@ const STRIP = "strip";
 function byOrder(a: ProjectModule, b: ProjectModule): number {
   if (a.order !== b.order) return a.order - b.order;
   return a.createdAt.localeCompare(b.createdAt);
+}
+
+/** Fisher–Yates — a fresh order every call (the "aleatorio" in the deal). */
+function shuffle<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/**
+ * Deals `tasks` across members so everyone lands with a similar WORK VOLUME —
+ * the sum of task importance, i.e. sizes AND count together. Largest tasks
+ * first, each to whoever carries the least so far (the classic greedy that
+ * balances near-perfectly), seeded with each member's `baseLoad` (work already
+ * on their plate) and random tie-breaks so repeat clicks give a fresh, fair
+ * deal. Returns taskId → memberId.
+ */
+function distributeByWeight(
+  tasks: ProjectModule[],
+  memberIds: string[],
+  baseLoad: Map<string, number>,
+): Map<string, string> {
+  const assignment = new Map<string, string>();
+  if (memberIds.length === 0) return assignment;
+  const load = new Map(memberIds.map((id) => [id, baseLoad.get(id) ?? 0]));
+  const ordered = shuffle(tasks).sort(
+    (a, b) => clampImportance(b.importance) - clampImportance(a.importance),
+  );
+  for (const task of ordered) {
+    let best = memberIds[0];
+    let bestLoad = Infinity;
+    for (const id of shuffle(memberIds)) {
+      const current = load.get(id) ?? 0;
+      if (current < bestLoad) {
+        bestLoad = current;
+        best = id;
+      }
+    }
+    assignment.set(task.id, best);
+    load.set(best, (load.get(best) ?? 0) + clampImportance(task.importance));
+  }
+  return assignment;
 }
 
 export function OrganizationView() {
@@ -84,6 +133,27 @@ export function OrganizationView() {
     for (const mod of project.modules) {
       if (mod.assigneeIds.length > 0) assignToMember(mod.id, null);
     }
+  };
+
+  // "Repartir por peso": deal the unassigned tasks out so every member ends
+  // with a similar work volume (weighted by importance), on top of whatever
+  // they already carry. Reset first for a full re-deal from scratch.
+  const handleDistributeByWeight = () => {
+    if (unassigned.length === 0 || project.members.length === 0) return;
+    const baseLoad = new Map(
+      project.members.map((member) => [
+        member.id,
+        project.modules
+          .filter((mod) => mod.assigneeIds.includes(member.id))
+          .reduce((sum, mod) => sum + clampImportance(mod.importance), 0),
+      ]),
+    );
+    const deal = distributeByWeight(
+      unassigned,
+      project.members.map((member) => member.id),
+      baseLoad,
+    );
+    for (const [taskId, memberId] of deal) assignToMember(taskId, memberId);
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -144,6 +214,8 @@ export function OrganizationView() {
           modules={unassigned}
           canReset={assignedCount > 0}
           onReset={handleResetAssignments}
+          canDistribute={unassigned.length > 0 && project.members.length > 0}
+          onDistribute={handleDistributeByWeight}
           onOpen={openModule}
           onCommitImportance={setImportance}
           onAdd={(title) => handleAdd(title)}
@@ -192,6 +264,8 @@ function StripZone({
   modules,
   canReset,
   onReset,
+  canDistribute,
+  onDistribute,
   onOpen,
   onCommitImportance,
   onAdd,
@@ -199,6 +273,8 @@ function StripZone({
   modules: ProjectModule[];
   canReset: boolean;
   onReset: () => void;
+  canDistribute: boolean;
+  onDistribute: () => void;
   onOpen: (id: string) => void;
   onCommitImportance: (id: string, value: number) => void;
   onAdd: (title: string) => void;
@@ -218,17 +294,30 @@ function StripZone({
     >
       <div className="mb-2.5 flex items-center justify-between gap-2">
         <p className="type-overline">Sin asignar</p>
-        {canReset && (
-          <button
-            type="button"
-            onClick={onReset}
-            title="Devolver todas las tareas a «Sin asignar»"
-            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Reiniciar reparto
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {canDistribute && (
+            <button
+              type="button"
+              onClick={onDistribute}
+              title="Repartir las tareas sin asignar por peso, para que todos tengan un volumen de trabajo similar"
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            >
+              <Scale className="h-3.5 w-3.5" />
+              Repartir por peso
+            </button>
+          )}
+          {canReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              title="Devolver todas las tareas a «Sin asignar»"
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reiniciar reparto
+            </button>
+          )}
+        </div>
       </div>
       <SortableContext
         items={modules.map((m) => `${STRIP}::${m.id}`)}

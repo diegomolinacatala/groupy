@@ -105,6 +105,8 @@ export interface CorkboardProps {
   onAddTask: (title: string) => void;
   /** Create a task pinned at board fractions (0–1) — double-click to place. */
   onAddTaskAt: (title: string, fx: number, fy: number) => void;
+  /** Reports the measured board px so "Ordenar" can pack columns by size. */
+  onBoardResize?: (size: { w: number; h: number }) => void;
 }
 
 export function nodeWidth(module: ProjectModule): number {
@@ -167,22 +169,138 @@ function layersOf(modules: ProjectModule[]): ProjectModule[][] {
 }
 
 /**
+ * Reorders the nodes WITHIN each layer to cut edge crossings — the classic
+ * barycenter heuristic: a node wants to sit at the average row of the
+ * neighbours it connects to in the adjacent layer. A few alternating down/up
+ * sweeps settle it. Pure reordering; it never moves a task between layers.
+ */
+function reduceCrossings(
+  layers: ProjectModule[][],
+  modules: ProjectModule[],
+): void {
+  if (layers.length < 2) return;
+  const inBlock = new Set(modules.map((m) => m.id));
+  const parents = new Map<string, string[]>(); // deps in an earlier layer
+  const children = new Map<string, string[]>(); // tasks that depend on this one
+  for (const m of modules) children.set(m.id, []);
+  for (const m of modules) {
+    const deps = m.dependsOn.filter((id) => inBlock.has(id));
+    parents.set(m.id, deps);
+    for (const d of deps) children.get(d)?.push(m.id);
+  }
+
+  const rowsOf = (layer: ProjectModule[]) => {
+    const pos = new Map<string, number>();
+    layer.forEach((m, i) => pos.set(m.id, i));
+    return pos;
+  };
+  const barycenter = (
+    neighbours: string[],
+    rows: Map<string, number>,
+    fallback: number,
+  ): number => {
+    let sum = 0;
+    let n = 0;
+    for (const id of neighbours) {
+      const r = rows.get(id);
+      if (r !== undefined) {
+        sum += r;
+        n += 1;
+      }
+    }
+    return n === 0 ? fallback : sum / n;
+  };
+  // Sort layer `l` by each node's barycenter over `adj` in the reference layer.
+  const sweep = (
+    l: number,
+    reference: ProjectModule[],
+    adj: Map<string, string[]>,
+  ) => {
+    const rows = rowsOf(reference);
+    const keyed = layers[l].map((m, i) => ({
+      m,
+      i,
+      b: barycenter(adj.get(m.id) ?? [], rows, i),
+    }));
+    // Stable on ties (keep the existing order) so it converges, not oscillates.
+    keyed.sort((a, b) => a.b - b.b || a.i - b.i);
+    layers[l] = keyed.map((k) => k.m);
+  };
+
+  for (let pass = 0; pass < 4; pass += 1) {
+    for (let l = 1; l < layers.length; l += 1) sweep(l, layers[l - 1], parents);
+    for (let l = layers.length - 2; l >= 0; l -= 1) {
+      sweep(l, layers[l + 1], children);
+    }
+  }
+}
+
+/**
  * Board fractions (0–1) that lay a block out left→right by dependency depth:
- * one column per layer, tasks stacked within it. Not a fancy graph layout —
- * it just makes the arrows read left-to-right. Used by the "Ordenar" reset.
+ * one column per layer. Within a column the nodes are ordered to MINIMISE edge
+ * crossings (barycenter) and stacked with vertical space PROPORTIONAL to each
+ * task's size, so bigger tasks claim more room and never crowd the small ones.
+ *
+ * When the board size is known the COLUMNS are packed by each layer's real card
+ * widths too (a wide task reserves a wider column, so nothing overlaps its
+ * neighbour); without it we fall back to even fractional columns. Used by the
+ * "Ordenar" reset.
  */
 export function autoLayoutFractions(
   modules: ProjectModule[],
+  board?: { w: number; h: number } | null,
 ): Map<string, { fx: number; fy: number }> {
   const layers = layersOf(modules);
+  reduceCrossings(layers, modules);
   const cols = Math.max(layers.length, 1);
   const out = new Map<string, { fx: number; fy: number }>();
+
+  // fx for a node in layer `l`. place() maps a node's fx over (board.w − its
+  // own width), so to land a card's LEFT edge at a target px we invert that.
+  let columnFx: (mod: ProjectModule, l: number) => number;
+  if (board && board.w > 0) {
+    const widths = layers.map((layer) =>
+      Math.max(...layer.map((m) => nodeWidth(m)), NODE_MIN_WIDTH),
+    );
+    const avail = board.w - PAD * 2;
+    const sumW = widths.reduce((a, b) => a + b, 0);
+    // One gap shared by every column: POSITIVE (real breathing room, scaled to
+    // each layer's card width) when the cards fit, NEGATIVE (an even, staggered
+    // overlap) when the block is too wide to fit — either way the last card
+    // ends exactly at the right edge, so columns never pile up off-board.
+    const gap = cols > 1 ? (avail - sumW) / (cols - 1) : 0;
+    const lefts: number[] = [];
+    let x = PAD;
+    for (let l = 0; l < cols; l += 1) {
+      lefts.push(x);
+      x += widths[l] + gap;
+    }
+    columnFx = (mod, l) => {
+      const usableW = Math.max(board.w - nodeWidth(mod) - PAD * 2, 1);
+      return Math.min(1, Math.max(0, (lefts[l] - PAD) / usableW));
+    };
+  } else {
+    columnFx = (_mod, l) => (cols === 1 ? 0.06 : (l / (cols - 1)) * 0.86 + 0.04);
+  }
+
+  // Vertical band the stacks live in (fractions of the usable board).
+  const TOP = 0.08;
+  const BOTTOM = 0.92;
   layers.forEach((layer, l) => {
-    const rows = layer.length;
-    const fx = cols === 1 ? 0.06 : (l / (cols - 1)) * 0.86 + 0.04;
+    if (layer.length === 1) {
+      out.set(layer[0].id, { fx: columnFx(layer[0], l), fy: 0.12 });
+      return;
+    }
+    // Each row's slice of the band is proportional to the task's on-board size
+    // (bigger importance → taller card → wider slice → more separation).
+    const weights = layer.map((mod) => importanceScale(mod.importance));
+    const total = weights.reduce((a, b) => a + b, 0) || 1;
+    const span = BOTTOM - TOP;
+    let acc = 0;
     layer.forEach((mod, i) => {
-      const fy = rows === 1 ? 0.14 : (i / (rows - 1)) * 0.74 + 0.1;
-      out.set(mod.id, { fx, fy });
+      const fy = TOP + acc * span; // top of this task's weighted slice
+      acc += weights[i] / total;
+      out.set(mod.id, { fx: columnFx(mod, l), fy });
     });
   });
   return out;
@@ -238,6 +356,7 @@ export function Corkboard({
   onOpen,
   onAddTask,
   onAddTaskAt,
+  onBoardResize,
 }: CorkboardProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const nodeRefs = useRef(new Map<string, HTMLElement>());
@@ -401,11 +520,21 @@ export function Corkboard({
 
   // --- measurement -------------------------------------------------------
 
+  // Latest reporter behind a ref so the observer effect stays [] and never
+  // re-subscribes when the parent passes a fresh callback identity.
+  const onBoardResizeRef = useRef(onBoardResize);
+  useEffect(() => {
+    onBoardResizeRef.current = onBoardResize;
+  }, [onBoardResize]);
+
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const measureBoard = () =>
-      setBoardSize({ w: container.clientWidth, h: container.clientHeight });
+    const measureBoard = () => {
+      const size = { w: container.clientWidth, h: container.clientHeight };
+      setBoardSize(size);
+      onBoardResizeRef.current?.(size);
+    };
     measureBoard();
     const observer = new ResizeObserver(measureBoard);
     observer.observe(container);
@@ -1174,16 +1303,22 @@ export function Corkboard({
         })}
 
       {/* Tasks flying in a teammate's hand — the ghost card follows their
-          broadcast position; the origin node hides meanwhile (remoteLifted). */}
+          broadcast position; the origin node hides meanwhile (remoteLifted).
+          The "moving" treatment (name tag, tilt, owner-tinted halo) shows ONLY
+          while they are actively dragging: the moment they let go the card
+          settles as a plain task at rest, so no move animation lingers — and a
+          teammate reorganising in another view (which never broadcasts an
+          active map drag) shows nothing here at all. */}
       {remoteGhosts.map(({ drag, mod, point, dragger }) => {
         const color = dragger ? colorForKey(dragger.colorKey) : null;
+        const moving = drag.active;
         return (
           <div
             key={`remote-drag:${mod.id}`}
             className="pointer-events-none absolute z-40 transition-[left,top] duration-[110ms] ease-linear"
             style={{ left: point.x, top: point.y }}
           >
-            {dragger && color && (
+            {moving && dragger && color && (
               <span
                 className="absolute -top-4 left-1 z-10 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none shadow-sm"
                 style={{ backgroundColor: color.bg, color: color.ink }}
@@ -1191,18 +1326,23 @@ export function Corkboard({
                 {firstNameOf(dragger.name)}
               </span>
             )}
+            {/* Same shape as the task itself (CorkNodeStatic): a rounded,
+                owner-tinted card — never a boxy outline. The halo is a soft
+                colored shadow that follows the card's curve. */}
             <div
               className={cn(
                 "rounded-lg transition-transform duration-200",
-                drag.active && "rotate-[1.6deg] scale-[1.04]",
+                moving && "rotate-[1deg] scale-[1.03]",
               )}
               style={
-                color
-                  ? { boxShadow: `0 0 0 2px ${color.bg}66, var(--shadow-pop)` }
+                color && moving
+                  ? {
+                      boxShadow: `0 0 0 2px ${color.bg}55, 0 14px 30px -12px ${color.bg}`,
+                    }
                   : undefined
               }
             >
-              <CorkNodeStatic project={project} module={mod} />
+              <CorkNodeStatic project={project} module={mod} lifted={moving} />
             </div>
           </div>
         );
@@ -1492,9 +1632,13 @@ function CorkNode({
 export function CorkNodeStatic({
   project,
   module,
+  lifted = true,
 }: {
   project: Project;
   module: ProjectModule;
+  /** The pick-up "lift" animation. Off for a settled (dropped) ghost so it
+   *  reads as the task at rest, not a card mid-flight. */
+  lifted?: boolean;
 }) {
   const scale = importanceScale(module.importance);
   const owner = project.members.find((m) => module.assigneeIds.includes(m.id));
@@ -1511,7 +1655,10 @@ export function CorkNodeStatic({
         fontSize: 12 * scale,
         padding: `${8 * scale}px ${10 * scale}px`,
       }}
-      className="animate-lift cursor-grabbing rounded-lg border border-line border-l-[3px] bg-surface shadow-pop"
+      className={cn(
+        "cursor-grabbing rounded-lg border border-line border-l-[3px] bg-surface shadow-pop",
+        lifted && "animate-lift",
+      )}
     >
       <span className="flex items-center" style={{ gap: 6 * scale }}>
         <DocTypeBadge docType={module.docType} />

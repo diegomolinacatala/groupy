@@ -61,6 +61,10 @@ export function MapView() {
   const [scope, setScope] = useState<MapScope>("team");
   const [activeTask, setActiveTask] = useState<ProjectModule | null>(null);
   const [blockDragging, setBlockDragging] = useState(false);
+  // Reported by the open Corkboard so "Ordenar" can pack columns by card width.
+  const [boardSize, setBoardSize] = useState<{ w: number; h: number } | null>(
+    null,
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -133,10 +137,14 @@ export function MapView() {
     addModule({ title, blockId: activeFlow.block.id, mapX, mapY });
   };
 
-  // "Ordenar": reset the open block's tasks to a left→right depth layout.
+  // "Ordenar": reset the open block's tasks to a left→right depth layout,
+  // packed by card size against the measured board so nothing overlaps.
   const handleAutoLayout = () => {
     if (!activeFlow) return;
-    for (const [id, { fx, fy }] of autoLayoutFractions(activeFlow.modules)) {
+    for (const [id, { fx, fy }] of autoLayoutFractions(
+      activeFlow.modules,
+      boardSize,
+    )) {
       setModulePosition(id, fx, fy);
     }
   };
@@ -240,6 +248,7 @@ export function MapView() {
                 onOpen={openModule}
                 onAddTask={handleAddTask}
                 onAddTaskAt={handleAddTaskAt}
+                onBoardResize={setBoardSize}
               />
             )
           )}
