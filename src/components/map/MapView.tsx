@@ -37,6 +37,9 @@ import { Corkboard, CorkNodeStatic, autoLayoutFractions } from "./Corkboard";
 
 type MapScope = "team" | "mine";
 
+// Apple-style motion: one gentle overshoot, then settle (mirrors --ease-spring).
+const SPRING_EASING = "cubic-bezier(0.32, 1.25, 0.32, 1)";
+
 export function MapView() {
   const {
     project,
@@ -241,7 +244,11 @@ export function MapView() {
         </div>
       </div>
 
-      {/* The traveling card lives in a portal so the board never clips it. */}
+      {/* The traveling card lives in a portal so the board never clips it.
+          No fly-back drop animation: on a free-position board the real node
+          teleports to the drop point, so dnd-kit's overlay flight has no
+          coherent target (it shot off to a corner). The landed node does an
+          in-place spring "settle" instead — see Corkboard's justDropped. */}
       <DragOverlay dropAnimation={null}>
         {activeTask ? (
           <CorkNodeStatic project={project} module={activeTask} />
@@ -363,7 +370,13 @@ function Diamond({
     transition,
     isDragging,
     isOver,
-  } = useSortable({ id: block.id, data: { type: "block" } });
+  } = useSortable({
+    id: block.id,
+    data: { type: "block" },
+    // Neighbors slide aside (and the dropped diamond settles) with the same
+    // spring as the corkboard cards.
+    transition: { duration: 320, easing: SPRING_EASING },
+  });
 
   const complete = state === "complete";
   const highlight = taskDragging && isOver;

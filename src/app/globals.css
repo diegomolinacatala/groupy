@@ -59,6 +59,8 @@
   --shadow-pop: 0 8px 24px rgba(29, 28, 23, 0.12), 0 2px 6px rgba(29, 28, 23, 0.08);
   --ring: 0 0 0 3px rgba(79, 70, 229, 0.24);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Apple-style spring: one gentle overshoot, then settle. */
+  --ease-spring: cubic-bezier(0.32, 1.25, 0.32, 1);
 }
 
 @layer base {
@@ -286,6 +288,39 @@
   animation: groupy-pick 200ms var(--ease-out-expo) both;
 }
 
+/* Lift (Mapa): the grabbed card rises off the board — Apple-style: it grows
+   a touch and the shadow deepens with a springy overshoot, NO tilt. The 1.05
+   scale is compensated on drop by the MapView dropAnimation (LIFT_SCALE). */
+@keyframes groupy-lift {
+  from {
+    transform: scale(1);
+    box-shadow: var(--shadow-card);
+  }
+  to {
+    transform: scale(1.05);
+    box-shadow: var(--shadow-pop);
+  }
+}
+.animate-lift {
+  animation: groupy-lift 240ms var(--ease-spring) both;
+}
+
+/* Settle (Mapa): the card that just landed presses into the board — a small
+   spring scale-down, opacity pinned so it never flashes/fades in on drop. */
+@keyframes groupy-settle {
+  from {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.animate-settle {
+  animation: groupy-settle 260ms var(--ease-spring) both;
+}
+
 /* Marching dashes on the live connection line. */
 @keyframes groupy-dash {
   to {
@@ -315,6 +350,8 @@
   .animate-fade,
   .animate-pop-in,
   .animate-pick,
+  .animate-lift,
+  .animate-settle,
   .node-flash {
     animation-duration: 1ms;
     animation-delay: 0ms;

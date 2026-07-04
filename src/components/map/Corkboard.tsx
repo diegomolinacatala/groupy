@@ -211,6 +211,9 @@ export function Corkboard({
   const [liftedId, setLiftedId] = useState<string | null>(null);
   const [dragDelta, setDragDelta] = useState<Point | null>(null);
   const [ripple, setRipple] = useState<Point | null>(null);
+  // The task just dropped on the board — plays a one-shot spring "settle" in
+  // place (no fly-in), then clears so the animation can replay on the next drop.
+  const [justDroppedId, setJustDroppedId] = useState<string | null>(null);
   // Double-click-to-place: an inline name field pinned at the click point.
   const [draft, setDraft] = useState<Point | null>(null);
   const [draftValue, setDraftValue] = useState("");
@@ -321,6 +324,9 @@ export function Corkboard({
       const fx = (pos.x + event.delta.x - PAD) / usableW;
       const fy = (pos.y + event.delta.y - PAD) / usableH;
       onSetPosition(id, Math.min(1, Math.max(0, fx)), Math.min(1, Math.max(0, fy)));
+      // The card settles onto the board with a spring where it landed.
+      setJustDroppedId(id);
+      later(() => setJustDroppedId((cur) => (cur === id ? null : cur)), 320);
       // The halo detaches at the landing point and dissolves outwards.
       const rect = rects.get(id);
       if (rect) {
@@ -837,6 +843,7 @@ export function Corkboard({
               position={pos}
               ghost={isGhost(mod)}
               lifted={liftedId === mod.id}
+              justDropped={justDroppedId === mod.id}
               rejected={rejectedId === mod.id}
               flashing={flashId === mod.id}
               portDrag={portDrag}
@@ -877,6 +884,7 @@ function CorkNode({
   position,
   ghost,
   lifted,
+  justDropped,
   rejected,
   flashing,
   portDrag,
@@ -892,6 +900,7 @@ function CorkNode({
   position: Point;
   ghost: boolean;
   lifted: boolean;
+  justDropped: boolean;
   rejected: boolean;
   flashing: boolean;
   portDrag: PortDrag | null;
@@ -960,12 +969,13 @@ function CorkNode({
         padding: `${8 * scale}px ${10 * scale}px`,
       }}
       className={cn(
-        "group/node absolute rounded-lg border border-line border-l-[3px] bg-surface text-left shadow-card transition-[box-shadow,opacity,transform] duration-200",
+        "group/node absolute rounded-lg border border-line border-l-[3px] bg-surface text-left shadow-card transition-[box-shadow,opacity,transform] duration-300 ease-[var(--ease-spring)]",
         ghost
           ? "cursor-pointer opacity-25 hover:opacity-60"
           : "cursor-grab touch-none active:cursor-grabbing",
         lifted && "z-30 opacity-25",
         !lifted && isDragging && "z-30",
+        justDropped && "animate-settle",
         rejected && "!border-danger",
         flashing && "node-flash",
         isValidTarget && !isSnapped && "ring-1 ring-accent/40",
@@ -1081,7 +1091,7 @@ export function CorkNodeStatic({
         fontSize: 12 * scale,
         padding: `${8 * scale}px ${10 * scale}px`,
       }}
-      className="animate-pick cursor-grabbing rounded-lg border border-line border-l-[3px] bg-surface shadow-pop"
+      className="animate-lift cursor-grabbing rounded-lg border border-line border-l-[3px] bg-surface shadow-pop"
     >
       <span className="flex items-center" style={{ gap: 6 * scale }}>
         <DocTypeBadge docType={module.docType} />
