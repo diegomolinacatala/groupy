@@ -289,6 +289,29 @@
   animation: groupy-node-flash 650ms ease-out;
 }
 
+/* One-shot halo when a TEAMMATE just changed this task (realtime). Mounted
+   as a decorative overlay keyed by the edit timestamp: it replays only when
+   a new remote edit arrives, never on unrelated re-renders. Tinted with the
+   owner's color via --glow-color. */
+@keyframes groupy-remote-glow {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--glow-color) 55%, transparent);
+    opacity: 1;
+  }
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+    opacity: 0;
+  }
+}
+.remote-glow-overlay {
+  --glow-color: var(--color-accent);
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: groupy-remote-glow 900ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-rise,
   .animate-rise-delayed,
@@ -297,7 +320,8 @@
   .animate-pick,
   .animate-lift,
   .animate-settle,
-  .node-flash {
+  .node-flash,
+  .remote-glow-overlay {
     animation-duration: 1ms;
     animation-delay: 0ms;
   }

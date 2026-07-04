@@ -423,6 +423,9 @@ function SortableTask({
     transition,
     isDragging,
   } = useSortable({ id: module.id });
+  // One-shot halo when a teammate just touched this task (cloud realtime).
+  const { remoteGlow } = useProject();
+  const glowTs = remoteGlow.get(module.id);
 
   return (
     <div
@@ -432,7 +435,7 @@ function SortableTask({
       {...listeners}
       onClick={onOpen}
       className={cn(
-        "cursor-grab touch-none active:cursor-grabbing",
+        "relative cursor-grab touch-none active:cursor-grabbing",
         isDragging && "opacity-30",
       )}
     >
@@ -440,6 +443,21 @@ function SortableTask({
         <NowCardBody module={module} me={me} onAdvance={onAdvance} />
       ) : (
         <TaskRowBody module={module} onAdvance={onAdvance} />
+      )}
+      {glowTs !== undefined && (
+        <span
+          key={glowTs}
+          aria-hidden
+          className={cn(
+            "remote-glow-overlay",
+            hero ? "rounded-2xl" : "rounded-xl",
+          )}
+          style={
+            {
+              "--glow-color": colorForKey(me.colorKey).bg,
+            } as CSSProperties
+          }
+        />
       )}
     </div>
   );

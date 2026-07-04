@@ -22,7 +22,7 @@ import type { CreateProjectInput } from "./schemas";
 // never treated as errors.
 
 /** timestamptz / date column → the prototype's "yyyy-mm-dd" (null-safe). */
-function toIsoDate(value: string | null): string | null {
+export function toIsoDate(value: string | null): string | null {
   return value ? value.slice(0, 10) : null;
 }
 
@@ -49,7 +49,7 @@ function jsonToChecklist(json: Json): ChecklistItem[] {
  * `groups.strengths` holds a per-member record { [memberId]: string[] }.
  * Legacy rows hold the old flat array — read as "nobody declared yet".
  */
-function jsonToMemberStrengths(json: Json): Record<string, string[]> {
+export function jsonToMemberStrengths(json: Json): Record<string, string[]> {
   if (!json || typeof json !== "object" || Array.isArray(json)) return {};
   const record: Record<string, string[]> = {};
   for (const [key, value] of Object.entries(json)) {
@@ -170,6 +170,7 @@ export function rowsToProject(
 export function moduleToTaskRow(
   groupId: string,
   module: ProjectModule,
+  origin?: string | null,
 ): TablesInsert<"tasks"> {
   return {
     id: module.id,
@@ -192,6 +193,7 @@ export function moduleToTaskRow(
     doc_type: module.docType,
     map_x: module.mapX,
     map_y: module.mapY,
+    last_origin: origin ?? null,
     created_at: module.createdAt,
     // done_at is deliberately absent: a DB trigger stamps/clears it on status
     // transitions so clients can't forge completion times.
@@ -201,6 +203,7 @@ export function moduleToTaskRow(
 export function blockToTaskRow(
   groupId: string,
   block: ProjectBlock,
+  origin?: string | null,
 ): TablesInsert<"tasks"> {
   return {
     id: block.id,
@@ -213,6 +216,7 @@ export function blockToTaskRow(
     sort_order: block.order,
     checklist: [],
     assignees: [],
+    last_origin: origin ?? null,
   };
 }
 

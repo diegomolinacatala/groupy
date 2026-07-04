@@ -91,11 +91,15 @@ export const memberStrengthsInputSchema = z.object({
 export const upsertTaskInputSchema = z.object({
   groupId: z.uuid(),
   module: projectModuleSchema,
+  // Ephemeral tab id stamped into tasks.last_origin — lets the writing tab
+  // recognize (and drop) the realtime echo of its own edit.
+  origin: z.uuid().nullish(),
 });
 
 export const upsertBlockInputSchema = z.object({
   groupId: z.uuid(),
   block: projectBlockSchema,
+  origin: z.uuid().nullish(),
 });
 
 export const deleteTaskInputSchema = z.object({

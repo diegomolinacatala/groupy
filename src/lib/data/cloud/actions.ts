@@ -214,7 +214,13 @@ export async function upsertCloudTask(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("tasks")
-    .upsert(moduleToTaskRow(parsed.data.groupId, parsed.data.module))
+    .upsert(
+      moduleToTaskRow(
+        parsed.data.groupId,
+        parsed.data.module,
+        parsed.data.origin,
+      ),
+    )
     .select("id");
   if (error) return { ok: false, error: error.message };
   if (!data?.length) {
@@ -233,7 +239,9 @@ export async function upsertCloudBlock(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("tasks")
-    .upsert(blockToTaskRow(parsed.data.groupId, parsed.data.block))
+    .upsert(
+      blockToTaskRow(parsed.data.groupId, parsed.data.block, parsed.data.origin),
+    )
     .select("id");
   if (error) return { ok: false, error: error.message };
   if (!data?.length) {

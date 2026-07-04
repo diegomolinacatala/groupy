@@ -4,6 +4,7 @@ import { useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DocTypeBadge } from "@/components/ui/DocTypeBadge";
+import { useProject } from "@/lib/data/ProjectProvider";
 import {
   clampImportance,
   importanceScale,
@@ -112,6 +113,9 @@ export function SortableTaskChip({
       id: `${containerId}::${module.id}`,
       data: { taskId: module.id, containerId } satisfies ChipDragData,
     });
+  // One-shot halo when a teammate just touched this task (cloud realtime).
+  const { remoteGlow } = useProject();
+  const glowTs = remoteGlow.get(module.id);
 
   // Corner resize gesture: live size preview, committed on pointerup.
   const [preview, setPreview] = useState<number | null>(null);
@@ -186,6 +190,18 @@ export function SortableTaskChip({
         importance={preview ?? module.importance}
         color={color}
       />
+      {glowTs !== undefined && (
+        <span
+          key={glowTs}
+          aria-hidden
+          className="remote-glow-overlay rounded-lg"
+          style={
+            {
+              "--glow-color": color?.bg ?? "var(--color-accent)",
+            } as CSSProperties
+          }
+        />
+      )}
       {/* Resize handle: the bottom-right corner of the chip drawn THICKER
           (like a wall), always visible — drag it outward to grow the task. */}
       <span

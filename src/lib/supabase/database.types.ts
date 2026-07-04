@@ -1,5 +1,5 @@
 // Hand-authored to mirror supabase/migrations (foundation + cloud slice +
-// task-flow columns).
+// task-flow columns + realtime sync).
 // Regenerate with `npx supabase gen types typescript --linked` once logged in
 // (`--db-url` gen requires a local Docker daemon, which this machine lacks).
 
@@ -313,6 +313,7 @@ export type Database = {
           doc_type: string | null;
           map_x: number | null;
           map_y: number | null;
+          last_origin: string | null;
           done_at: string | null;
           created_at: string;
         };
@@ -335,6 +336,7 @@ export type Database = {
           doc_type?: string | null;
           map_x?: number | null;
           map_y?: number | null;
+          last_origin?: string | null;
           done_at?: string | null;
           created_at?: string;
         };
@@ -357,6 +359,7 @@ export type Database = {
           doc_type?: string | null;
           map_x?: number | null;
           map_y?: number | null;
+          last_origin?: string | null;
           done_at?: string | null;
           created_at?: string;
         };

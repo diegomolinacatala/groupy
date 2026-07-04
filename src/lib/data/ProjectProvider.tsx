@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useReducer,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -29,6 +30,8 @@ import {
 } from "./store";
 import { orderedBlocks, wouldCreateCycle } from "./flow";
 import { nextMemberColorKey } from "@/lib/utils/colors";
+import { useCloudRealtime } from "./cloud/realtime";
+import type { ProjectAction } from "./reducer";
 
 const PLACEHOLDER: Project = {
   id: "",
@@ -93,6 +96,11 @@ export interface CloudBinding {
   /** The group_members row claimed by this browser's anonymous session. */
   currentMemberId: string | null;
   mirror: ProjectMirror;
+  /** Ids the realtime subscription needs (filters + echo suppression). */
+  projectId: string;
+  groupId: string;
+  /** Ephemeral id of this mounted dashboard (echo suppression). */
+  tabId: string;
 }
 
 interface ProjectApi {
@@ -147,6 +155,12 @@ interface ProjectContextValue extends ProjectApi {
   joinCode: string | null;
   /** Member this session acts as (claimed in cloud, picked in local). */
   currentMemberId: string | null;
+  /**
+   * taskId → timestamp of the last edit that arrived FROM A TEAMMATE via
+   * realtime. Views mount a one-shot glow keyed by the timestamp so remote
+   * changes are noticeable without replaying on unrelated re-renders.
+   */
+  remoteGlow: ReadonlyMap<string, number>;
 }
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -183,6 +197,39 @@ export function ProjectProvider({
   useEffect(() => {
     if (!isCloud && project.id !== "") saveProject(project);
   }, [isCloud, project]);
+
+  // --- Realtime (cloud only): teammates' edits land here -------------------
+  const [remoteGlow, setRemoteGlow] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
+
+  const markRemoteGlow = (id: string) => {
+    setRemoteGlow((prev) => {
+      const now = Date.now();
+      const next = new Map<string, number>();
+      // Self-pruning: stale entries drop whenever a new one comes in.
+      for (const [key, ts] of prev) {
+        if (now - ts < 5000) next.set(key, ts);
+      }
+      next.set(id, now);
+      return next;
+    });
+  };
+
+  const applyRemote = (action: ProjectAction) => {
+    if (action.type === "APPLY_REMOTE_MODULE") {
+      markRemoteGlow(action.module.id);
+    }
+    dispatch(action);
+  };
+
+  // No-ops in local mode (empty ids guard the subscription internally).
+  useCloudRealtime({
+    projectId: cloud?.projectId ?? "",
+    groupId: cloud?.groupId ?? "",
+    tabId: cloud?.tabId ?? "",
+    apply: applyRemote,
+  });
 
   const currentMemberId = isCloud
     ? cloud.currentMemberId
@@ -422,6 +469,7 @@ export function ProjectProvider({
     mode: isCloud ? "cloud" : "local",
     joinCode: cloud?.joinCode ?? null,
     currentMemberId,
+    remoteGlow,
     ...api,
   };
 

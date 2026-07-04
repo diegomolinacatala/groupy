@@ -15,6 +15,11 @@ export interface CloudContext {
   groupId: string;
   memberId: string;
   joinCode: string;
+  /**
+   * Ephemeral id of this mounted dashboard. Stamped into tasks.last_origin on
+   * every write so the realtime subscription can drop our own echoes.
+   */
+  tabId: string;
 }
 
 type SyncResult = { ok: true } | { ok: false; error: string };
@@ -48,7 +53,7 @@ export function createCloudMirror(ctx: CloudContext): ProjectMirror {
       ),
     upsertModule: (module) =>
       enqueue("la tarea", () =>
-        upsertCloudTask({ groupId: ctx.groupId, module }),
+        upsertCloudTask({ groupId: ctx.groupId, module, origin: ctx.tabId }),
       ),
     deleteModule: (id) =>
       enqueue("la tarea", () =>
@@ -56,7 +61,7 @@ export function createCloudMirror(ctx: CloudContext): ProjectMirror {
       ),
     upsertBlock: (block) =>
       enqueue("el bloque", () =>
-        upsertCloudBlock({ groupId: ctx.groupId, block }),
+        upsertCloudBlock({ groupId: ctx.groupId, block, origin: ctx.tabId }),
       ),
     // A block is a milestone row in `tasks` — same delete path.
     deleteBlock: (id) =>

@@ -11,6 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
+import { useLiveRoom } from "@/lib/data/cloud/live";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import { InlineText } from "@/components/ui/InlineText";
 import { Avatar } from "@/components/ui/Avatar";
@@ -147,6 +148,12 @@ export function Topbar() {
 function IdentityChip() {
   const { project, mode, currentMemberId, setCurrentMember } = useProject();
   const { setView } = useDashboardUi();
+  // Presence (cloud only): who has this project open right now.
+  const room = useLiveRoom();
+  const online = room?.onlineMemberIds ?? null;
+  const othersOnline = online
+    ? [...online].filter((id) => id !== currentMemberId).length
+    : 0;
 
   const me = project.members.find((m) => m.id === currentMemberId) ?? null;
   const canSwitch = mode === "local";
@@ -170,7 +177,17 @@ function IdentityChip() {
         >
           {me ? (
             <>
-              <Avatar member={me} size="xs" />
+              <span className="relative inline-flex">
+                <Avatar member={me} size="xs" />
+                {othersOnline > 0 && (
+                  <span
+                    aria-hidden
+                    title={`${othersOnline} más en línea`}
+                    className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ring-2 ring-surface"
+                    style={{ backgroundColor: "var(--color-done)" }}
+                  />
+                )}
+              </span>
               <span className="hidden max-w-28 truncate sm:inline">
                 {firstName(me.name)}
               </span>
@@ -190,7 +207,11 @@ function IdentityChip() {
           <p className="px-2 pb-2 pt-1 text-xs leading-relaxed text-muted">
             {me
               ? mode === "cloud"
-                ? `En este dispositivo eres ${firstName(me.name)}.`
+                ? `En este dispositivo eres ${firstName(me.name)}.${
+                    online && online.size > 0
+                      ? ` · ${online.size} en línea`
+                      : ""
+                  }`
                 : "Estás usando la demo como…"
               : "Elige quién eres para ver tu vista Principal."}
           </p>
@@ -199,6 +220,7 @@ function IdentityChip() {
             {project.members.map((member) => {
               const isMe = member.id === currentMemberId;
               const clickable = canSwitch || isMe;
+              const isOnline = online?.has(member.id) ?? false;
               return (
                 <button
                   key={member.id}
@@ -218,6 +240,13 @@ function IdentityChip() {
                   <span className="min-w-0 flex-1 truncate text-ink">
                     {member.name}
                   </span>
+                  {isOnline && !isMe && (
+                    <span
+                      title="En línea ahora"
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: "var(--color-done)" }}
+                    />
+                  )}
                   {isMe && (
                     <span className="inline-flex items-center gap-1 text-xs font-medium text-accent">
                       <Check className="h-3.5 w-3.5" />

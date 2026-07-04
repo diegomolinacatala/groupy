@@ -6,17 +6,26 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useDndMonitor, useDraggable } from "@dnd-kit/core";
 import { Check, Lock, LockOpen, X } from "lucide-react";
 import type { BlockFlow, ModuleFlow, ProjectFlow } from "@/lib/data/flow";
 import { wouldCreateCycle } from "@/lib/data/flow";
+import { useProject } from "@/lib/data/ProjectProvider";
+import {
+  useLiveHot,
+  useLiveRoom,
+  type LiveCursor,
+  type LiveDrag,
+} from "@/lib/data/cloud/live";
 import {
   IMPORTANCE_DEFAULT,
   importanceScale,
   type Project,
   type ProjectModule,
+  type TeamMember,
 } from "@/lib/data/types";
 import { formatShort } from "@/lib/utils/dates";
 import { DocTypeBadge } from "@/components/ui/DocTypeBadge";
@@ -297,6 +306,99 @@ export function Corkboard({
     ? resolvePositions(modules, boardSize)
     : new Map<string, Point>();
 
+  // --- live layer: teammates' cursors + tasks they are dragging -----------
+
+  const room = useLiveRoom();
+  const { cursors, drags } = useLiveHot();
+  const blockId = blockFlow.block.id;
+  const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+  const remoteCursors: LiveCursor[] = [];
+  for (const cursor of cursors.values()) {
+    if (cursor.blockId === blockId) remoteCursors.push(cursor);
+  }
+
+  /** Same px math as place(): fractions are of the USABLE board per node. */
+  const ghostPoint = (mod: ProjectModule, fx: number, fy: number): Point => {
+    const w = nodeWidth(mod);
+    const usableW = Math.max((boardSize?.w ?? 0) - w - PAD * 2, 0);
+    const usableH = Math.max((boardSize?.h ?? 0) - EST_NODE_H - PAD * 2, 0);
+    return {
+      x: PAD + clamp01(fx) * usableW,
+      y: PAD + clamp01(fy) * usableH,
+    };
+  };
+
+  // A finished drag keeps its ghost until the durable position (map_x/map_y
+  // via postgres_changes) catches up — the card never snaps back home.
+  const GHOST_EPS = 0.004;
+  const ghostStillNeeded = (mod: ProjectModule, drag: LiveDrag): boolean => {
+    if (drag.active) return true;
+    if (mod.mapX === null || mod.mapY === null) return true;
+    return (
+      Math.abs(mod.mapX - drag.fx) > GHOST_EPS ||
+      Math.abs(mod.mapY - drag.fy) > GHOST_EPS
+    );
+  };
+
+  const remoteGhosts: {
+    drag: LiveDrag;
+    mod: ProjectModule;
+    point: Point;
+    dragger: TeamMember | null;
+  }[] = [];
+  if (boardSize) {
+    for (const drag of drags.values()) {
+      if (drag.blockId !== blockId) continue;
+      if (drag.taskId === liftedId) continue; // our own drag wins visually
+      const mod = modules.find((m) => m.id === drag.taskId);
+      if (!mod || !ghostStillNeeded(mod, drag)) continue;
+      remoteGhosts.push({
+        drag,
+        mod,
+        point: ghostPoint(mod, drag.fx, drag.fy),
+        dragger: project.members.find((m) => m.id === drag.memberId) ?? null,
+      });
+    }
+  }
+  const remoteGhostById = new Map(remoteGhosts.map((g) => [g.mod.id, g]));
+
+  // Fingerprint of the ghosts currently traveling — drives the dot-field
+  // effect further down (it must sit below the dot helpers it calls).
+  const remoteFieldKey = remoteGhosts
+    .filter((g) => g.drag.active)
+    .map((g) => `${g.mod.id}:${Math.round(g.point.x)}:${Math.round(g.point.y)}`)
+    .join("|");
+  const remoteFieldWasActive = useRef(false);
+
+  const sendLiveCursor = (clientX: number, clientY: number) => {
+    if (!room || !boardSize || !containerRef.current) return;
+    const point = localPoint({ clientX, clientY });
+    room.sendCursor({
+      blockId,
+      fx: clamp01(point.x / boardSize.w),
+      fy: clamp01(point.y / boardSize.h),
+    });
+  };
+
+  /** The drag payload for the task currently lifted locally. */
+  const sendLiveDrag = (delta: Point, active: boolean) => {
+    if (!room || !boardSize || !liftedId) return;
+    const mod = modules.find((m) => m.id === liftedId);
+    const pos = positions.get(liftedId);
+    if (!mod || !pos) return;
+    const w = nodeWidth(mod);
+    const usableW = Math.max(boardSize.w - w - PAD * 2, 1);
+    const usableH = Math.max(boardSize.h - EST_NODE_H - PAD * 2, 1);
+    room.sendDrag({
+      taskId: liftedId,
+      blockId,
+      fx: clamp01((pos.x + delta.x - PAD) / usableW),
+      fy: clamp01((pos.y + delta.y - PAD) / usableH),
+      active,
+    });
+  };
+
   // --- measurement -------------------------------------------------------
 
   useLayoutEffect(() => {
@@ -346,6 +448,10 @@ export function Corkboard({
     if (liftedId === id && dragDelta) {
       return { ...rect, x: rect.x + dragDelta.x, y: rect.y + dragDelta.y };
     }
+    // A task flying in a teammate's hand: edges chase the ghost, not the
+    // hidden origin node.
+    const ghost = remoteGhostById.get(id);
+    if (ghost) return { ...rect, x: ghost.point.x, y: ghost.point.y };
     return rect;
   };
 
@@ -446,6 +552,29 @@ export function Corkboard({
     dotAnimations.current = [];
   };
 
+  // Remote flying cards displace the dot field exactly like local ones (the
+  // local drag owns the dots while both happen at once).
+  useEffect(() => {
+    if (liftedId) return;
+    const traveling = remoteGhosts.find((g) => g.drag.active);
+    if (traveling) {
+      if (!remoteFieldWasActive.current) cancelDotAnimations();
+      remoteFieldWasActive.current = true;
+      updateDots({
+        x: traveling.point.x,
+        y: traveling.point.y,
+        w: nodeWidth(traveling.mod),
+        h: rects.get(traveling.mod.id)?.h ?? EST_NODE_H,
+      });
+    } else if (remoteFieldWasActive.current) {
+      remoteFieldWasActive.current = false;
+      releaseDots();
+    }
+    // remoteFieldKey fingerprints the traveling ghosts; the callbacks are
+    // stable enough (they only touch refs).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteFieldKey, liftedId]);
+
   // --- free drop (positions) via the shared DndContext --------------------
 
   useDndMonitor({
@@ -472,9 +601,25 @@ export function Corkboard({
           y: rect.y + event.delta.y,
         });
       }
+      // The group watches the card fly in real time…
+      sendLiveDrag({ x: event.delta.x, y: event.delta.y }, true);
+      // …and the pointer keeps moving too (dnd capture swallows pointermove).
+      const activator = event.activatorEvent as Partial<PointerEvent> | null;
+      if (
+        activator &&
+        typeof activator.clientX === "number" &&
+        typeof activator.clientY === "number"
+      ) {
+        sendLiveCursor(
+          activator.clientX + event.delta.x,
+          activator.clientY + event.delta.y,
+        );
+      }
     },
     onDragEnd: (event) => {
       const id = liftedId;
+      // Final frame BEFORE clearing lift state (sendLiveDrag reads liftedId).
+      sendLiveDrag({ x: event.delta.x, y: event.delta.y }, false);
       setLiftedId(null);
       setDragDelta(null);
       releaseDots();
@@ -495,6 +640,7 @@ export function Corkboard({
       later(() => setJustDroppedId((cur) => (cur === id ? null : cur)), 320);
     },
     onDragCancel: () => {
+      sendLiveDrag({ x: 0, y: 0 }, false);
       setLiftedId(null);
       setDragDelta(null);
       releaseDots();
@@ -806,6 +952,9 @@ export function Corkboard({
         if (e.target !== e.currentTarget || !boardSize) return;
         openDraft(localPoint(e));
       }}
+      // Teammates see this pointer glide over the board (throttled upstream).
+      onPointerMove={(e) => sendLiveCursor(e.clientX, e.clientY)}
+      onPointerLeave={() => room?.sendCursor(null)}
     >
       {/* Dot field: real SVG dots so they can make room for the traveling
           card and spring back home on drop. */}
@@ -1004,6 +1153,7 @@ export function Corkboard({
               position={pos}
               ghost={isGhost(mod)}
               lifted={liftedId === mod.id}
+              remoteLifted={remoteGhostById.has(mod.id)}
               justDropped={justDroppedId === mod.id}
               rejected={rejectedId === mod.id}
               flashing={flashId === mod.id}
@@ -1022,8 +1172,88 @@ export function Corkboard({
             />
           );
         })}
+
+      {/* Tasks flying in a teammate's hand — the ghost card follows their
+          broadcast position; the origin node hides meanwhile (remoteLifted). */}
+      {remoteGhosts.map(({ drag, mod, point, dragger }) => {
+        const color = dragger ? colorForKey(dragger.colorKey) : null;
+        return (
+          <div
+            key={`remote-drag:${mod.id}`}
+            className="pointer-events-none absolute z-40 transition-[left,top] duration-[110ms] ease-linear"
+            style={{ left: point.x, top: point.y }}
+          >
+            {dragger && color && (
+              <span
+                className="absolute -top-4 left-1 z-10 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none shadow-sm"
+                style={{ backgroundColor: color.bg, color: color.ink }}
+              >
+                {firstNameOf(dragger.name)}
+              </span>
+            )}
+            <div
+              className={cn(
+                "rounded-lg transition-transform duration-200",
+                drag.active && "rotate-[1.6deg] scale-[1.04]",
+              )}
+              style={
+                color
+                  ? { boxShadow: `0 0 0 2px ${color.bg}66, var(--shadow-pop)` }
+                  : undefined
+              }
+            >
+              <CorkNodeStatic project={project} module={mod} />
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Teammates' pointers on THIS block's board, in their member color. */}
+      {boardSize &&
+        remoteCursors.map((cursor) => {
+          const member = project.members.find((m) => m.id === cursor.memberId);
+          if (!member) return null;
+          const color = colorForKey(member.colorKey);
+          return (
+            <div
+              key={`cursor:${cursor.tabId}`}
+              className="pointer-events-none absolute z-50 transition-[left,top] duration-100 ease-linear"
+              style={{
+                left: cursor.fx * boardSize.w,
+                top: cursor.fy * boardSize.h,
+              }}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                aria-hidden
+                className="-translate-x-[2px] -translate-y-[2px] drop-shadow-sm"
+              >
+                <path
+                  d="M5.5 3.2 L19 11.3 L12.6 12.8 L9.4 18.9 Z"
+                  fill={color.bg}
+                  stroke="#fff"
+                  strokeWidth="1.4"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span
+                className="ml-3 -mt-0.5 block w-fit whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none shadow-sm"
+                style={{ backgroundColor: color.bg, color: color.ink }}
+              >
+                {firstNameOf(member.name)}
+              </span>
+            </div>
+          );
+        })}
     </div>
   );
+}
+
+/** "Diego Molina" → "Diego" (cursor/ghost labels stay short). */
+function firstNameOf(name: string): string {
+  return name.trim().split(/\s+/)[0] || name;
 }
 
 function stateGlyph(entry: ModuleFlow, waitingColor: string | null) {
@@ -1045,6 +1275,7 @@ function CorkNode({
   position,
   ghost,
   lifted,
+  remoteLifted,
   justDropped,
   rejected,
   flashing,
@@ -1061,6 +1292,8 @@ function CorkNode({
   position: Point;
   ghost: boolean;
   lifted: boolean;
+  /** A teammate is dragging this task right now — its ghost is the visible one. */
+  remoteLifted: boolean;
   justDropped: boolean;
   rejected: boolean;
   flashing: boolean;
@@ -1072,10 +1305,13 @@ function CorkNode({
   onPortUp: (e: ReactPointerEvent) => void;
 }) {
   const mod = entry.module;
+  // One-shot halo when a TEAMMATE just edited this task (cloud realtime).
+  const { remoteGlow } = useProject();
+  const glowTs = remoteGlow.get(mod.id);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `node:${mod.id}`,
     data: { type: "task", taskId: mod.id },
-    disabled: ghost,
+    disabled: ghost || remoteLifted,
   });
   // A completed drag must not fire the click-to-open that follows pointerup.
   const draggedRef = useRef(false);
@@ -1139,8 +1375,10 @@ function CorkNode({
           ? "cursor-pointer opacity-25 hover:opacity-60"
           : "cursor-grab touch-none active:cursor-grabbing",
         // The origin hides fully while its card travels (the overlay is the
-        // visible one) — no faint "transparent task" left behind.
+        // visible one) — no faint "transparent task" left behind. Same rule
+        // when the card travels in a TEAMMATE's hand.
         lifted && "z-30 opacity-0",
+        remoteLifted && "pointer-events-none opacity-0",
         !lifted && isDragging && "z-30",
         justDropped && "animate-settle",
         rejected && "!border-danger",
@@ -1150,6 +1388,18 @@ function CorkNode({
         targeting && !isValidTarget && "opacity-40 saturate-50",
       )}
     >
+      {glowTs !== undefined && !remoteLifted && (
+        <span
+          key={glowTs}
+          aria-hidden
+          className="remote-glow-overlay"
+          style={
+            {
+              "--glow-color": ownerColor?.bg ?? "var(--color-accent)",
+            } as CSSProperties
+          }
+        />
+      )}
       <span className="flex items-center" style={{ gap: 6 * scale }}>
         <DocTypeBadge docType={mod.docType} />
         <span

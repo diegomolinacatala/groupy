@@ -19,6 +19,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { ArrowRight, Check, Plus, Trash2, Wand2 } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
+import { useLiveHot } from "@/lib/data/cloud/live";
+import { colorForKey } from "@/lib/utils/colors";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import { buildProjectFlow, orderedBlocks, type BlockFlow } from "@/lib/data/flow";
 import { BLOCK_MODE_META, type ProjectModule, type TeamMember } from "@/lib/data/types";
@@ -435,7 +437,52 @@ function Diamond({
       >
         {block.name || "Sin nombre"}
       </span>
+      <BlockLiveDots blockId={block.id} />
     </div>
+  );
+}
+
+/**
+ * Live presence under a diamond: one dot per teammate whose cursor (or
+ * flying task) is on that block's corkboard right now. Isolated component so
+ * cursor broadcasts only re-render these few dots, never the whole rail.
+ */
+function BlockLiveDots({ blockId }: { blockId: string }) {
+  const { cursors, drags } = useLiveHot();
+  const { project } = useProject();
+
+  const memberIds: string[] = [];
+  for (const cursor of cursors.values()) {
+    if (cursor.blockId === blockId && !memberIds.includes(cursor.memberId)) {
+      memberIds.push(cursor.memberId);
+    }
+  }
+  for (const drag of drags.values()) {
+    if (
+      drag.blockId === blockId &&
+      drag.active &&
+      !memberIds.includes(drag.memberId)
+    ) {
+      memberIds.push(drag.memberId);
+    }
+  }
+
+  // Fixed height whether empty or not — diamonds must never jump.
+  return (
+    <span className="mt-0.5 flex h-1.5 items-center justify-center gap-1">
+      {memberIds.slice(0, 4).map((id) => {
+        const member = project.members.find((m) => m.id === id);
+        if (!member) return null;
+        return (
+          <span
+            key={id}
+            title={`${member.name} está aquí`}
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ backgroundColor: colorForKey(member.colorKey).bg }}
+          />
+        );
+      })}
+    </span>
   );
 }
 
