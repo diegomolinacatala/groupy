@@ -88,6 +88,7 @@ export function Topbar() {
 
             <Popover
               align="start"
+              portal
               trigger={({ toggle }) => (
                 <button type="button" onClick={toggle}>
                   <Badge
@@ -153,6 +154,7 @@ function IdentityChip() {
   return (
     <Popover
       align="end"
+      portal
       className="w-64"
       trigger={({ toggle }) => (
         <button
