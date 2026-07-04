@@ -196,7 +196,11 @@ project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mec
   lists the team with "Tú" marked; **local mode switches identity with one click**
   (demo affordance), **cloud mode is fixed** ("Tu identidad queda vinculada a este
   dispositivo" — `claim_member` refuses a second row per uid) and says so. The chip
-  replaced the topbar AvatarStack; "Ver el equipo" lives inside the popover.
+  replaced the topbar AvatarStack; "Ver el equipo" lives inside the popover. Both
+  topbar popovers (identity + project status) use `portal` — the `<header>`'s
+  `backdrop-blur` makes a stacking context, so a non-portaled panel got painted over
+  by each view's content (right rail cards etc.); portaling to `document.body` fixes
+  it in every view.
 - **Type-right-away**: `InlineText` gained `autoFocus` (TaskModal title uses it when the
   title is empty → "+ Tarea" anywhere is click → type → Enter), and `InlineAddTask`
   focuses its input on mount (attribute + effect).
