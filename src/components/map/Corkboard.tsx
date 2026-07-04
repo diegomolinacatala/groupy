@@ -3,6 +3,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -31,11 +32,28 @@ import { cn } from "@/lib/utils/cn";
 // everything here; cycles are the only hard rule.
 
 const PAD = 10;
-/** Base card width at default importance — scaled by `importanceScale`. */
+/** Width of the double-click draft input (a fixed box is right for typing). */
 const NODE_BASE_WIDTH = 172;
+/** Text-hugging card width bounds, before the importance scale. */
+const NODE_MIN_WIDTH = 84;
+const NODE_MAX_WIDTH = 200;
 const EST_NODE_H = 60;
 /** Cursor-to-node distance at which a connection snaps on. */
 const SNAP_RADIUS = 56;
+
+/* Dot field — the board texture is real SVG dots so they can MAKE ROOM for
+   the traveling card: dots inside its footprint duck away, dots around it
+   lean outward following the card's shape, and on drop they spring home in
+   a small outward wave. */
+const DOT_SPACING = 26;
+/** How far past the card's edge a dot still feels the push. */
+const DOT_FIELD = 80;
+/** Displacement of a dot sitting right at the card's edge. */
+const DOT_PUSH = 18;
+/** The clearing extends this far past the card on every side. */
+const DOT_MARGIN = 10;
+/** Spring-back easing: one overshoot past home, then settle. */
+const DOT_RETURN_EASING = "cubic-bezier(0.34, 1.56, 0.64, 1)";
 
 interface Rect {
   x: number;
@@ -81,7 +99,23 @@ export interface CorkboardProps {
 }
 
 export function nodeWidth(module: ProjectModule): number {
-  return Math.round(NODE_BASE_WIDTH * importanceScale(module.importance));
+  const title = module.title || "Sin título";
+  // Hug the title: ~6.4px/char at the 12px base size plus the chrome around
+  // it (padding, state glyph, optional type badge). Long titles cap at
+  // NODE_MAX_WIDTH and wrap onto the second line (line-clamp-2).
+  const chrome = 42 + (module.docType ? 30 : 0);
+  const hug = Math.min(
+    Math.max(chrome + title.length * 6.4, NODE_MIN_WIDTH),
+    NODE_MAX_WIDTH,
+  );
+  return Math.round(hug * importanceScale(module.importance));
+}
+
+/** Shortest distance from a point to a rect's border (0 inside). */
+function distanceToRect(x: number, y: number, rect: Rect): number {
+  const dx = Math.max(rect.x - x, 0, x - (rect.x + rect.w));
+  const dy = Math.max(rect.y - y, 0, y - (rect.y + rect.h));
+  return Math.hypot(dx, dy);
 }
 
 /** Deterministic 0–1 from a string — stable corkboard jitter per task. */
@@ -212,6 +246,28 @@ export function Corkboard({
   // The task just dropped on the board — plays a one-shot spring "settle" in
   // place (no fly-in), then clears so the animation can replay on the next drop.
   const [justDroppedId, setJustDroppedId] = useState<string | null>(null);
+  // Dot field: driven imperatively (no re-render per dot) — see updateDots.
+  const dots = useRef(
+    new Map<
+      string,
+      {
+        el: SVGCircleElement;
+        x: number;
+        y: number;
+        dx: number;
+        dy: number;
+        hidden: boolean;
+      }
+    >(),
+  );
+  const dotAnimations = useRef<Animation[]>([]);
+  const lastFieldRect = useRef<Rect | null>(null);
+  // Read once — decorative dot motion is skipped entirely under reduced motion.
+  const [reducedMotion] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
   // Double-click-to-place: an inline name field pinned at the click point.
   const [draft, setDraft] = useState<Point | null>(null);
   const [draftValue, setDraftValue] = useState("");
@@ -293,23 +349,135 @@ export function Corkboard({
     return rect;
   };
 
+  // --- dot field (imperative: runs per pointermove, outside React) --------
+
+  /**
+   * Pushes every dot away from the traveling card. Dots inside the card's
+   * (slightly grown) footprint duck away — they gave up their spot; dots
+   * within reach lean outward from the nearest edge, so the clearing follows
+   * the card's SHAPE, not a circle. Only changed dots touch the DOM.
+   */
+  const updateDots = (rect: Rect | null) => {
+    if (reducedMotion) return;
+    lastFieldRect.current = rect;
+    const zone = rect
+      ? {
+          x: rect.x - DOT_MARGIN,
+          y: rect.y - DOT_MARGIN,
+          w: rect.w + DOT_MARGIN * 2,
+          h: rect.h + DOT_MARGIN * 2,
+        }
+      : null;
+    for (const dot of dots.current.values()) {
+      let dx = 0;
+      let dy = 0;
+      let hidden = false;
+      if (zone) {
+        const nx = Math.min(Math.max(dot.x, zone.x), zone.x + zone.w);
+        const ny = Math.min(Math.max(dot.y, zone.y), zone.y + zone.h);
+        const vx = dot.x - nx;
+        const vy = dot.y - ny;
+        const dist = Math.hypot(vx, vy);
+        if (dist === 0) {
+          // Swallowed by the card: fade out right where it was pushed to
+          // (keeping its displacement) instead of jumping home mid-fade.
+          hidden = true;
+          dx = dot.dx;
+          dy = dot.dy;
+        } else if (dist < DOT_FIELD) {
+          const t = 1 - dist / DOT_FIELD;
+          const push = DOT_PUSH * t * t;
+          dx = (vx / dist) * push;
+          dy = (vy / dist) * push;
+        }
+      }
+      if (hidden !== dot.hidden) {
+        dot.hidden = hidden;
+        dot.el.style.opacity = hidden ? "0" : "";
+      }
+      if (dx !== dot.dx || dy !== dot.dy) {
+        dot.dx = dx;
+        dot.dy = dy;
+        dot.el.style.transform =
+          dx === 0 && dy === 0 ? "" : `translate(${dx}px, ${dy}px)`;
+      }
+    }
+  };
+
+  /** Every displaced dot springs home — nearest first, a small outward wave. */
+  const releaseDots = () => {
+    const rect = lastFieldRect.current;
+    lastFieldRect.current = null;
+    for (const dot of dots.current.values()) {
+      if (dot.hidden) {
+        dot.hidden = false;
+        dot.el.style.opacity = "";
+      }
+      if (dot.dx === 0 && dot.dy === 0) continue;
+      const { dx, dy } = dot;
+      dot.dx = 0;
+      dot.dy = 0;
+      dot.el.style.transform = "";
+      if (reducedMotion) continue;
+      const delay = rect
+        ? Math.min(distanceToRect(dot.x, dot.y, rect) * 1.4, 160)
+        : 0;
+      dotAnimations.current.push(
+        dot.el.animate(
+          [
+            { transform: `translate(${dx}px, ${dy}px)` },
+            { transform: "translate(0px, 0px)" },
+          ],
+          {
+            duration: 480,
+            easing: DOT_RETURN_EASING,
+            delay,
+            // Holds the displaced pose through the stagger delay.
+            fill: "backwards",
+          },
+        ),
+      );
+    }
+  };
+
+  /** A new drag interrupts any spring-back still in flight. */
+  const cancelDotAnimations = () => {
+    for (const animation of dotAnimations.current) animation.cancel();
+    dotAnimations.current = [];
+  };
+
   // --- free drop (positions) via the shared DndContext --------------------
 
   useDndMonitor({
     onDragStart: (event) => {
       const data = event.active.data.current;
       if (data?.type === "task" && inBlock.has(String(data.taskId))) {
-        setLiftedId(String(data.taskId));
+        const id = String(data.taskId);
+        setLiftedId(id);
         setSelectedEdge(null);
+        // Dots lean away from the picked-up card immediately.
+        cancelDotAnimations();
+        const rect = rects.get(id);
+        if (rect) updateDots(rect);
       }
     },
     onDragMove: (event) => {
-      if (liftedId) setDragDelta({ x: event.delta.x, y: event.delta.y });
+      if (!liftedId) return;
+      setDragDelta({ x: event.delta.x, y: event.delta.y });
+      const rect = rects.get(liftedId);
+      if (rect) {
+        updateDots({
+          ...rect,
+          x: rect.x + event.delta.x,
+          y: rect.y + event.delta.y,
+        });
+      }
     },
     onDragEnd: (event) => {
       const id = liftedId;
       setLiftedId(null);
       setDragDelta(null);
+      releaseDots();
       if (!id || !boardSize) return;
       // Dropped on a block diamond → the MapView moves it between blocks.
       if (event.over?.data.current?.type === "block") return;
@@ -329,6 +497,7 @@ export function Corkboard({
     onDragCancel: () => {
       setLiftedId(null);
       setDragDelta(null);
+      releaseDots();
     },
   });
 
@@ -572,6 +741,43 @@ export function Corkboard({
 
   const selectedMid = selectedEdge ? edgeMidpoint(selectedEdge) : null;
 
+  // Memoized so the ~1k circle refs only re-run when the board resizes —
+  // NOT on every drag-move re-render.
+  const dotField = useMemo(() => {
+    if (!boardSize) return null;
+    const circles = [];
+    for (let y = DOT_SPACING / 2; y < boardSize.h; y += DOT_SPACING) {
+      for (let x = DOT_SPACING / 2; x < boardSize.w; x += DOT_SPACING) {
+        const key = `${x}:${y}`;
+        circles.push(
+          <circle
+            key={key}
+            cx={x}
+            cy={y}
+            r={1.1}
+            fill="rgba(29, 28, 23, 0.14)"
+            className="corkboard-dot"
+            ref={(el) => {
+              if (el) {
+                dots.current.set(key, {
+                  el,
+                  x,
+                  y,
+                  dx: 0,
+                  dy: 0,
+                  hidden: false,
+                });
+              } else {
+                dots.current.delete(key);
+              }
+            }}
+          />,
+        );
+      }
+    }
+    return circles;
+  }, [boardSize]);
+
   // Dated tasks get a vertical guide at their center — bottom of the board up
   // to a name + date label at the top. rectFor keeps it glued during drags.
   const dueMarkers = modules.flatMap((mod) => {
@@ -601,11 +807,14 @@ export function Corkboard({
         openDraft(localPoint(e));
       }}
     >
-      {/* Base dot grid — static; the card's own lift is the drag feedback. */}
-      <div
+      {/* Dot field: real SVG dots so they can make room for the traveling
+          card and spring back home on drop. */}
+      <svg
         aria-hidden
-        className="corkboard-dots pointer-events-none absolute inset-0"
-      />
+        className="pointer-events-none absolute inset-0 h-full w-full"
+      >
+        {dotField}
+      </svg>
 
       {modules.length === 0 && (
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -916,7 +1125,11 @@ function CorkNode({
         top: position.y,
         width: nodeWidth(mod),
         borderLeftColor: ownerColor?.bg ?? "var(--color-line-strong)",
-        backgroundColor: ownerColor ? ownerColor.bg + "0F" : undefined,
+        // Owner tint painted OVER the opaque surface — the card must never
+        // be see-through (dots pass UNDER tasks, not through them).
+        backgroundImage: ownerColor
+          ? `linear-gradient(0deg, ${ownerColor.bg}0F, ${ownerColor.bg}0F)`
+          : undefined,
         fontSize: 12 * scale,
         padding: `${8 * scale}px ${10 * scale}px`,
       }}
@@ -1041,7 +1254,10 @@ export function CorkNodeStatic({
       style={{
         width: nodeWidth(module),
         borderLeftColor: ownerColor?.bg ?? "var(--color-line-strong)",
-        backgroundColor: ownerColor ? ownerColor.bg + "0F" : undefined,
+        // Same opaque tint as CorkNode — the traveling card covers the dots.
+        backgroundImage: ownerColor
+          ? `linear-gradient(0deg, ${ownerColor.bg}0F, ${ownerColor.bg}0F)`
+          : undefined,
         fontSize: 12 * scale,
         padding: `${8 * scale}px ${10 * scale}px`,
       }}

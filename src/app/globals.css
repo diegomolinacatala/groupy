@@ -212,17 +212,11 @@
 
 /* ---- Corkboard (Mapa) ------------------------------------------------- */
 
-/* A single static dot grid. The drag feedback is the card's own lift and
-   settle (see groupy-lift / groupy-settle) — the board texture never moves,
-   swells or blurs under the card. */
-.corkboard-dots {
-  background-image: radial-gradient(
-    circle,
-    rgba(29, 28, 23, 0.14) 1.1px,
-    transparent 1.6px
-  );
-  background-size: 26px 26px;
-  background-position: 13px 13px;
+/* The board texture is real SVG dots (see Corkboard's dot field) so they can
+   make room for a traveling card — pushed aside imperatively, spring-back on
+   drop via WAAPI. Only the duck-away fade under the card lives in CSS. */
+.corkboard-dot {
+  transition: opacity 140ms ease;
 }
 
 /* Pick-up: the grabbed card grows a touch and tilts — applied to drag
