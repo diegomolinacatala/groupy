@@ -5,7 +5,6 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useDndMonitor, useDraggable } from "@dnd-kit/core";
@@ -210,7 +209,6 @@ export function Corkboard({
   const [recentEdgeKey, setRecentEdgeKey] = useState<string | null>(null);
   const [liftedId, setLiftedId] = useState<string | null>(null);
   const [dragDelta, setDragDelta] = useState<Point | null>(null);
-  const [ripple, setRipple] = useState<Point | null>(null);
   // The task just dropped on the board — plays a one-shot spring "settle" in
   // place (no fly-in), then clears so the animation can replay on the next drop.
   const [justDroppedId, setJustDroppedId] = useState<string | null>(null);
@@ -327,14 +325,6 @@ export function Corkboard({
       // The card settles onto the board with a spring where it landed.
       setJustDroppedId(id);
       later(() => setJustDroppedId((cur) => (cur === id ? null : cur)), 320);
-      // The halo detaches at the landing point and dissolves outwards.
-      const rect = rects.get(id);
-      if (rect) {
-        setRipple({
-          x: rect.x + event.delta.x + rect.w / 2,
-          y: rect.y + event.delta.y + rect.h / 2,
-        });
-      }
     },
     onDragCancel: () => {
       setLiftedId(null);
@@ -582,18 +572,6 @@ export function Corkboard({
 
   const selectedMid = selectedEdge ? edgeMidpoint(selectedEdge) : null;
 
-  // Halo hugging the traveling card: only appears once it actually MOVES
-  // (dragDelta stays null on a plain pick-up), and follows its center so the
-  // dots underneath swell as the card passes over them.
-  const haloRect = liftedId && dragDelta ? rectFor(liftedId) : null;
-  const halo = haloRect
-    ? {
-        x: haloRect.x + haloRect.w / 2,
-        y: haloRect.y + haloRect.h / 2,
-        r: Math.max(haloRect.w, haloRect.h) / 2 + 46,
-      }
-    : null;
-
   // Dated tasks get a vertical guide at their center — bottom of the board up
   // to a name + date label at the top. rectFor keeps it glued during drags.
   const dueMarkers = modules.flatMap((mod) => {
@@ -618,42 +596,16 @@ export function Corkboard({
       onClick={() => setSelectedEdge(null)}
       onDoubleClick={(e) => {
         // Only empty board space — nodes/edges are children with pointer events,
-        // the dot/halo/svg layers are pointer-events-none (never the target).
+        // the dot/svg layers are pointer-events-none (never the target).
         if (e.target !== e.currentTarget || !boardSize) return;
         openDraft(localPoint(e));
       }}
     >
-      {/* Base dot grid — never moves, never grows. */}
+      {/* Base dot grid — static; the card's own lift is the drag feedback. */}
       <div
         aria-hidden
         className="corkboard-dots pointer-events-none absolute inset-0"
       />
-      {/* Swollen dots, masked to a soft circle under the moving card. */}
-      <div
-        aria-hidden
-        className="corkboard-dots-halo pointer-events-none absolute inset-0"
-        style={
-          {
-            opacity: halo ? 1 : 0,
-            "--halo-x": `${halo?.x ?? 0}px`,
-            "--halo-y": `${halo?.y ?? 0}px`,
-            "--halo-r": halo ? `${halo.r}px` : "0px",
-          } as CSSProperties
-        }
-      />
-      {ripple && (
-        <div
-          aria-hidden
-          onAnimationEnd={() => setRipple(null)}
-          className="corkboard-dots-halo corkboard-dots-ripple pointer-events-none absolute inset-0"
-          style={
-            {
-              "--halo-x": `${ripple.x}px`,
-              "--halo-y": `${ripple.y}px`,
-            } as CSSProperties
-          }
-        />
-      )}
 
       {modules.length === 0 && (
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -973,7 +925,9 @@ function CorkNode({
         ghost
           ? "cursor-pointer opacity-25 hover:opacity-60"
           : "cursor-grab touch-none active:cursor-grabbing",
-        lifted && "z-30 opacity-25",
+        // The origin hides fully while its card travels (the overlay is the
+        // visible one) — no faint "transparent task" left behind.
+        lifted && "z-30 opacity-0",
         !lifted && isDragging && "z-30",
         justDropped && "animate-settle",
         rejected && "!border-danger",
