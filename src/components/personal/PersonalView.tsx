@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Check, Lock, LockOpen, Map as MapIcon, Plus } from "lucide-react";
+import { Check, Lock, LockOpen, Map as MapIcon } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import {
@@ -34,6 +34,7 @@ import {
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { DocTypeBadge } from "@/components/ui/DocTypeBadge";
+import { InlineAddTask } from "@/components/ui/InlineAddTask";
 import { colorForKey } from "@/lib/utils/colors";
 import {
   daysBetweenISO,
@@ -124,10 +125,9 @@ export function PersonalView() {
   const advance = (mod: ProjectModule) =>
     setModuleStatus(mod.id, mod.status === "todo" ? "in_progress" : "done");
 
-  const handleNewTask = () => {
+  const handleNewTask = (title: string) => {
     if (!me) return;
-    const id = addModule({ assigneeId: me });
-    openModule(id);
+    addModule({ title, assigneeId: me });
   };
 
   return (
@@ -233,7 +233,7 @@ function PersonalRail({
   flow: ProjectFlow;
   me: string;
   onOpen: (id: string) => void;
-  onNewTask: () => void;
+  onNewTask: (title: string) => void;
   onGoMap: () => void;
 }) {
   const myTasks = project.modules.filter((m) => m.assigneeIds.includes(me));
@@ -358,14 +358,13 @@ function PersonalRail({
       </section>
 
       <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={onNewTask}
-          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-line-strong px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Nueva tarea para mí
-        </button>
+        <InlineAddTask
+          onAdd={onNewTask}
+          label="Nueva tarea para mí"
+          placeholder="Nombre de la tarea…"
+          triggerClassName="inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-line-strong px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
+          inputClassName="w-full rounded-xl border border-accent bg-surface px-3 py-2 text-xs font-medium text-ink outline-none ring-2 ring-accent/25 placeholder:text-muted-2"
+        />
         <button
           type="button"
           onClick={onGoMap}

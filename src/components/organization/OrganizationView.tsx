@@ -16,11 +16,12 @@ import {
   rectSortingStrategy,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { Plus } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import type { ProjectModule, TeamMember } from "@/lib/data/types";
 import { Avatar } from "@/components/ui/Avatar";
+import { InlineAddTask } from "@/components/ui/InlineAddTask";
 import { colorForKey } from "@/lib/utils/colors";
 import { cn } from "@/lib/utils/cn";
 import {
@@ -68,9 +69,21 @@ export function OrganizationView() {
     ? project.modules.find((m) => m.id === active.taskId) ?? null
     : null;
 
-  const handleAdd = (assigneeId?: string) => {
-    const id = addModule(assigneeId ? { assigneeId } : undefined);
-    openModule(id);
+  const handleAdd = (title: string, assigneeId?: string) => {
+    addModule({ title, ...(assigneeId ? { assigneeId } : {}) });
+  };
+
+  // "Reiniciar reparto": every task goes back to the strip so the team can
+  // re-deal who does what from scratch.
+  const assignedCount = project.modules.filter(
+    (m) => m.assigneeIds.length > 0,
+  ).length;
+  const handleResetAssignments = () => {
+    if (assignedCount === 0) return;
+    if (!window.confirm("¿Devolver todas las tareas a «Sin asignar»?")) return;
+    for (const mod of project.modules) {
+      if (mod.assigneeIds.length > 0) assignToMember(mod.id, null);
+    }
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -129,9 +142,11 @@ export function OrganizationView() {
         {/* Strip: unassigned tasks, name only, sized by importance */}
         <StripZone
           modules={unassigned}
+          canReset={assignedCount > 0}
+          onReset={handleResetAssignments}
           onOpen={openModule}
           onCommitImportance={setImportance}
-          onAdd={() => handleAdd()}
+          onAdd={(title) => handleAdd(title)}
         />
 
         {/* One column per member */}
@@ -148,7 +163,7 @@ export function OrganizationView() {
               modules={tasksOf(member)}
               onOpen={openModule}
               onCommitImportance={setImportance}
-              onAdd={() => handleAdd(member.id)}
+              onAdd={(title) => handleAdd(title, member.id)}
             />
           ))}
         </div>
@@ -175,14 +190,18 @@ export function OrganizationView() {
 
 function StripZone({
   modules,
+  canReset,
+  onReset,
   onOpen,
   onCommitImportance,
   onAdd,
 }: {
   modules: ProjectModule[];
+  canReset: boolean;
+  onReset: () => void;
   onOpen: (id: string) => void;
   onCommitImportance: (id: string, value: number) => void;
-  onAdd: () => void;
+  onAdd: (title: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `container:${STRIP}`,
@@ -197,7 +216,20 @@ function StripZone({
         isOver && "ring-2 ring-accent/30",
       )}
     >
-      <p className="type-overline mb-2.5">Sin asignar</p>
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <p className="type-overline">Sin asignar</p>
+        {canReset && (
+          <button
+            type="button"
+            onClick={onReset}
+            title="Devolver todas las tareas a «Sin asignar»"
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reiniciar reparto
+          </button>
+        )}
+      </div>
       <SortableContext
         items={modules.map((m) => `${STRIP}::${m.id}`)}
         strategy={rectSortingStrategy}
@@ -212,14 +244,12 @@ function StripZone({
               onCommitImportance={(v) => onCommitImportance(mod.id, v)}
             />
           ))}
-          <button
-            type="button"
-            onClick={onAdd}
-            className="inline-flex items-center gap-1 rounded-lg border border-dashed border-line-strong px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Tarea
-          </button>
+          <InlineAddTask
+            onAdd={onAdd}
+            label="Tarea"
+            triggerClassName="inline-flex items-center gap-1 rounded-lg border border-dashed border-line-strong px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
+            inputClassName="w-44 rounded-lg border border-accent bg-surface px-3 py-1.5 text-xs font-medium text-ink outline-none ring-2 ring-accent/25 placeholder:text-muted-2"
+          />
         </div>
       </SortableContext>
     </section>
@@ -237,7 +267,7 @@ function MemberColumn({
   modules: ProjectModule[];
   onOpen: (id: string) => void;
   onCommitImportance: (id: string, value: number) => void;
-  onAdd: () => void;
+  onAdd: (title: string) => void;
 }) {
   const color = colorForKey(member.colorKey);
   const { setNodeRef, isOver } = useDroppable({
@@ -282,14 +312,12 @@ function MemberColumn({
               onCommitImportance={(v) => onCommitImportance(mod.id, v)}
             />
           ))}
-          <button
-            type="button"
-            onClick={onAdd}
-            aria-label={`Añadir tarea a ${member.name}`}
-            className="mt-auto grid h-8 place-items-center rounded-lg border border-dashed border-transparent text-muted-2 transition-colors hover:border-line-strong hover:text-ink"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+          <InlineAddTask
+            onAdd={onAdd}
+            ariaLabel={`Añadir tarea a ${member.name}`}
+            triggerClassName="mt-auto grid h-8 place-items-center rounded-lg border border-dashed border-transparent text-muted-2 transition-colors hover:border-line-strong hover:text-ink"
+            inputClassName="mt-auto w-full rounded-lg border border-accent bg-surface px-2.5 py-1.5 text-xs font-medium text-ink outline-none ring-2 ring-accent/25 placeholder:text-muted-2"
+          />
         </div>
       </SortableContext>
     </section>

@@ -39,11 +39,11 @@ export const projectModuleSchema = z.object({
   dueDate: isoDate.nullable(),
   assigneeIds: z.array(z.uuid()).max(20),
   checklist: z.array(checklistItemSchema).max(100),
-  // Flow fields: accepted on the wire but NOT persisted yet (no DB columns —
-  // see the KNOWN GAP note in mapping.ts). Defaults keep old payloads valid.
+  // Flow fields — persisted since the task-flow columns migration. Defaults
+  // keep pre-redesign payloads valid. Importance is continuous (real in DB).
   dependsOn: z.array(z.uuid()).max(50).default([]),
   blockId: z.uuid().nullable().default(null),
-  importance: z.number().int().min(1).max(10).default(5),
+  importance: z.number().min(1).max(10).default(5),
   docType: z
     .enum(["doc", "slides", "sheet", "pdf", "code", "image"])
     .nullable()
@@ -51,7 +51,10 @@ export const projectModuleSchema = z.object({
   mapX: z.number().min(0).max(1).nullable().default(null),
   mapY: z.number().min(0).max(1).nullable().default(null),
   order: z.number().int().min(0).max(100_000),
-  createdAt: z.iso.datetime(),
+  // offset:true is LOAD-BEARING: Supabase returns created_at as
+  // "…+00:00" (not "…Z"), and without it every edit to a cloud-loaded task
+  // failed validation — the mirror dropped the write silently.
+  createdAt: z.iso.datetime({ offset: true }),
 });
 
 export const createProjectInputSchema = z.object({

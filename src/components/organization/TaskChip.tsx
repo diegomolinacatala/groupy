@@ -12,7 +12,7 @@ import {
 import type { MemberColor } from "@/lib/utils/colors";
 import { cn } from "@/lib/utils/cn";
 
-/** Diagonal/horizontal px of resize drag per importance step. */
+/** Px of resize drag per importance unit (the value itself is continuous). */
 const RESIZE_STEP_PX = 14;
 
 /** Payload on every sortable chip; container droppables carry `containerId` only. */
@@ -126,10 +126,11 @@ export function SortableTaskChip({
     const g = gesture.current!;
     const dx = e.clientX - g.x;
     const dy = e.clientY - g.y;
-    // Bottom-LEFT corner: pulling outward (left or down) grows the chip.
-    // Dominant axis, so pure-horizontal and diagonal drags step alike.
-    const delta = Math.abs(dx) >= Math.abs(dy) ? -dx : dy;
-    return clampImportance(g.base + Math.round(delta / RESIZE_STEP_PX));
+    // Bottom-RIGHT corner: pulling outward (right or down) grows the chip.
+    // Dominant axis, so pure-horizontal and diagonal drags feel alike; the
+    // value is continuous — no fixed size levels between min and max.
+    const delta = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
+    return clampImportance(g.base + delta / RESIZE_STEP_PX);
   };
 
   const startResize = (e: PointerEvent<HTMLSpanElement>) => {
@@ -185,7 +186,7 @@ export function SortableTaskChip({
         importance={preview ?? module.importance}
         color={color}
       />
-      {/* Resize handle: the bottom-left corner of the chip drawn THICKER
+      {/* Resize handle: the bottom-right corner of the chip drawn THICKER
           (like a wall), always visible — drag it outward to grow the task. */}
       <span
         onPointerDown={startResize}
@@ -202,7 +203,7 @@ export function SortableTaskChip({
               : color?.bg ?? "var(--color-line-strong)",
         }}
         className={cn(
-          "absolute -bottom-px -left-px h-4 w-4 cursor-nesw-resize touch-none rounded-bl-lg border-b-[3px] border-l-[3px] transition-opacity",
+          "absolute -bottom-px -right-px h-4 w-4 cursor-nwse-resize touch-none rounded-br-lg border-b-[3px] border-r-[3px] transition-opacity",
           preview !== null ? "opacity-100" : "opacity-60 group-hover:opacity-100",
         )}
       />

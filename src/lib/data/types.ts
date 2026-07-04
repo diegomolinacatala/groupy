@@ -67,7 +67,7 @@ export interface ProjectModule {
    * real block; null is only tolerated transiently (stale payloads).
    */
   blockId: string | null;
-  /** 1–10. Shown as size in the Organización view, edited by resizing. */
+  /** 1–10, continuous. Shown as size in Organización, edited by resizing. */
   importance: number;
   docType: TaskDocType | null;
   /**
@@ -145,7 +145,9 @@ export const IMPORTANCE_DEFAULT = 5;
 
 export function clampImportance(value: number): number {
   if (!Number.isFinite(value)) return IMPORTANCE_DEFAULT;
-  return Math.min(IMPORTANCE_MAX, Math.max(IMPORTANCE_MIN, Math.round(value)));
+  // Continuous, not stepped: the resize gesture may land on any value
+  // between min and max (5.37 is a perfectly fine importance).
+  return Math.min(IMPORTANCE_MAX, Math.max(IMPORTANCE_MIN, value));
 }
 
 /**

@@ -1,4 +1,5 @@
-// Hand-authored to mirror supabase/migrations (foundation + cloud slice).
+// Hand-authored to mirror supabase/migrations (foundation + cloud slice +
+// task-flow columns).
 // Regenerate with `npx supabase gen types typescript --linked` once logged in
 // (`--db-url` gen requires a local Docker daemon, which this machine lacks).
 
@@ -306,6 +307,12 @@ export type Database = {
           checklist: Json;
           due_date: string | null;
           sort_order: number;
+          depends_on: string[];
+          block_id: string | null;
+          importance: number;
+          doc_type: string | null;
+          map_x: number | null;
+          map_y: number | null;
           done_at: string | null;
           created_at: string;
         };
@@ -322,6 +329,12 @@ export type Database = {
           checklist?: Json;
           due_date?: string | null;
           sort_order?: number;
+          depends_on?: string[];
+          block_id?: string | null;
+          importance?: number;
+          doc_type?: string | null;
+          map_x?: number | null;
+          map_y?: number | null;
           done_at?: string | null;
           created_at?: string;
         };
@@ -338,6 +351,12 @@ export type Database = {
           checklist?: Json;
           due_date?: string | null;
           sort_order?: number;
+          depends_on?: string[];
+          block_id?: string | null;
+          importance?: number;
+          doc_type?: string | null;
+          map_x?: number | null;
+          map_y?: number | null;
           done_at?: string | null;
           created_at?: string;
         };

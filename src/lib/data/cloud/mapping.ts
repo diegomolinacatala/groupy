@@ -4,9 +4,10 @@ import type {
   Project,
   ProjectBlock,
   ProjectModule,
+  TaskDocType,
   TeamMember,
 } from "../types";
-import { IMPORTANCE_DEFAULT } from "../types";
+import { clampImportance, DOC_TYPE_META } from "../types";
 import type { CreateProjectInput } from "./schemas";
 
 // Pure translation between the normalized DB rows and the prototype's flat
@@ -15,15 +16,10 @@ import type { CreateProjectInput } from "./schemas";
 //
 // Blocks piggyback on the existing schema: a BLOQUE is stored as a `tasks`
 // row of type "milestone" (title = name, sort_order = order, description =
-// mode). No new columns needed, and the create RPC passes them through.
-//
-// KNOWN GAP (extends the pre-redesign one): `tasks` has no columns for
-// `block_id` / `depends_on` / `importance` / `doc_type` / `map_x` / `map_y`
-// yet. Cloud projects read defaults for those (every task lands in the first
-// block, corkboard auto-lays out) and edits to them are NOT mirrored —
-// local/session state only. Next step: a migration adding the columns
-// (+ grants in the cloud-slice style), regenerate `database.types.ts`, then
-// flip the readers/writers below.
+// mode). The flow fields (depends_on, block_id, importance, doc_type,
+// map_x/map_y) have real columns since the task-flow migration; dangling
+// references (a dep or block that no longer exists) are normalized on read,
+// never treated as errors.
 
 /** timestamptz / date column → the prototype's "yyyy-mm-dd" (null-safe). */
 function toIsoDate(value: string | null): string | null {
@@ -64,6 +60,11 @@ function jsonToMemberStrengths(json: Json): Record<string, string[]> {
   return record;
 }
 
+/** The DB check constraint guarantees valid values; narrow defensively. */
+function toDocType(value: string | null): TaskDocType | null {
+  return value && value in DOC_TYPE_META ? (value as TaskDocType) : null;
+}
+
 export function taskRowToModule(row: Tables<"tasks">): ProjectModule {
   return {
     id: row.id,
@@ -73,13 +74,12 @@ export function taskRowToModule(row: Tables<"tasks">): ProjectModule {
     dueDate: toIsoDate(row.due_date),
     assigneeIds: row.assignees,
     checklist: jsonToChecklist(row.checklist),
-    // KNOWN GAP fields — see the header note.
-    dependsOn: [],
-    blockId: null,
-    importance: IMPORTANCE_DEFAULT,
-    docType: null,
-    mapX: null,
-    mapY: null,
+    dependsOn: row.depends_on,
+    blockId: row.block_id,
+    importance: clampImportance(row.importance),
+    docType: toDocType(row.doc_type),
+    mapX: row.map_x,
+    mapY: row.map_y,
     order: row.sort_order,
     createdAt: row.created_at,
   };
@@ -136,6 +136,12 @@ export function rowsToProject(
   const firstBlockId = blocks[0].id;
   const strengths = jsonToMemberStrengths(group.strengths);
 
+  // Normalize dangling references: a blockId pointing at a deleted block
+  // falls back to the first block, deps to deleted tasks are dropped.
+  const taskRows = sorted.filter((t) => t.type !== "milestone");
+  const taskIds = new Set(taskRows.map((t) => t.id));
+  const blockIds = new Set(blocks.map((b) => b.id));
+
   return {
     id: project.id,
     title: project.title,
@@ -145,9 +151,17 @@ export function rowsToProject(
     status: project.status,
     blocks,
     members: members.map((m) => memberRowToTeamMember(m, strengths)),
-    modules: sorted
-      .filter((t) => t.type !== "milestone")
-      .map((t) => ({ ...taskRowToModule(t), blockId: firstBlockId })),
+    modules: taskRows.map((t) => {
+      const mod = taskRowToModule(t);
+      return {
+        ...mod,
+        blockId:
+          mod.blockId && blockIds.has(mod.blockId)
+            ? mod.blockId
+            : firstBlockId,
+        dependsOn: mod.dependsOn.filter((id) => taskIds.has(id)),
+      };
+    }),
     // Write-only in the UI (nothing reads it back); refreshed by the reducer.
     updatedAt: new Date().toISOString(),
   };
@@ -172,10 +186,15 @@ export function moduleToTaskRow(
       done: c.done,
     })),
     assignees: module.assigneeIds,
+    depends_on: module.dependsOn,
+    block_id: module.blockId,
+    importance: clampImportance(module.importance),
+    doc_type: module.docType,
+    map_x: module.mapX,
+    map_y: module.mapY,
     created_at: module.createdAt,
     // done_at is deliberately absent: a DB trigger stamps/clears it on status
     // transitions so clients can't forge completion times.
-    // dependsOn / blockId / importance / docType are absent — KNOWN GAP.
   };
 }
 
@@ -254,6 +273,12 @@ export function toRpcPayload(input: CreateProjectInput): Json {
           done: c.done,
         })),
         assignees: m.assigneeIds,
+        depends_on: m.dependsOn,
+        block_id: m.blockId,
+        importance: m.importance,
+        doc_type: m.docType,
+        map_x: m.mapX,
+        map_y: m.mapY,
       })),
     ],
   };

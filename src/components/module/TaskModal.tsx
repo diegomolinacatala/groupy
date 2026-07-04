@@ -247,9 +247,12 @@ export function TaskModal() {
                 </div>
               )}
 
-              {/* Everything else lives below the graph. */}
+              {/* Everything else lives below the graph, in TWO columns:
+                  details on the left, the checklist — the working heart of
+                  the task — as the protagonist on the right. */}
               <div className="mt-7 border-t border-line pt-6">
-                <div className="grid gap-x-8 gap-y-4 md:grid-cols-2">
+                <div className="grid items-stretch gap-6 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] md:gap-8">
+                  <div className="grid content-start gap-x-6 gap-y-4 sm:grid-cols-2">
                   <Field label="Estado">
                     <Segmented
                       options={STATUS_OPTIONS.map((option) => ({
@@ -402,35 +405,54 @@ export function TaskModal() {
                       />
                     </div>
                   </Field>
-                </div>
+                    <div className="sm:col-span-2">
+                      <Field label="Descripción">
+                        <InlineText
+                          value={activeModule.description}
+                          onCommit={(description) =>
+                            updateModule(activeModule.id, { description })
+                          }
+                          placeholder="Notas, enlaces…"
+                          multiline
+                          ariaLabel="Descripción de la tarea"
+                          className="-ml-1.5 min-h-16 rounded-lg bg-surface-2/50 text-sm text-ink-2"
+                        />
+                      </Field>
+                    </div>
+                  </div>
 
-                <div className="mt-5 flex flex-col gap-5">
-                  <Field label="Descripción">
-                    <InlineText
-                      value={activeModule.description}
-                      onCommit={(description) =>
-                        updateModule(activeModule.id, { description })
-                      }
-                      placeholder="Notas, enlaces…"
-                      multiline
-                      ariaLabel="Descripción de la tarea"
-                      className="-ml-1.5 min-h-16 rounded-lg bg-surface-2/50 text-sm text-ink-2"
-                    />
-                  </Field>
-
-                  <div>
-                    <div className="mb-2 flex items-center justify-between">
+                  {/* The checklist column: its own surface, progress on top,
+                      the add box always at hand. */}
+                  <section className="flex min-h-64 flex-col rounded-2xl border border-line bg-surface p-4 shadow-card">
+                    <div className="flex items-center justify-between">
                       <span className="text-xs font-medium uppercase tracking-wide text-muted">
                         Checklist
                       </span>
                       {activeModule.checklist.length > 0 && (
-                        <span className="text-xs text-muted">
+                        <span className="text-xs tabular-nums text-muted">
                           {checklistDone}/{activeModule.checklist.length}
                         </span>
                       )}
                     </div>
 
-                    <div className="flex flex-col gap-1">
+                    {activeModule.checklist.length > 0 && (
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3">
+                        <div
+                          className="h-full rounded-full bg-done transition-[width] duration-300"
+                          style={{
+                            width: `${(checklistDone / activeModule.checklist.length) * 100}%`,
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex flex-1 flex-col gap-1">
+                      {activeModule.checklist.length === 0 && (
+                        <p className="text-xs text-muted-2">
+                          Divide la tarea en pasos pequeños y ve marcándolos
+                          aquí.
+                        </p>
+                      )}
                       {activeModule.checklist.map((item) => (
                         <div
                           key={item.id}
@@ -496,7 +518,7 @@ export function TaskModal() {
                       ))}
                     </div>
 
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="mt-3 flex items-center gap-2">
                       <input
                         value={checklistDraft}
                         onChange={(e) => setChecklistDraft(e.target.value)}
@@ -516,7 +538,7 @@ export function TaskModal() {
                         <Plus className="h-4 w-4" />
                       </IconButton>
                     </div>
-                  </div>
+                  </section>
                 </div>
               </div>
             </div>

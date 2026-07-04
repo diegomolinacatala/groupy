@@ -43,7 +43,7 @@ Supabase Anonymous Auth creates a persistent per-device session; the student onl
 `display_name` + `email` as profile data on their `group_members` row. RLS then works via
 `auth.uid()` for both roles — no parallel token system.
 
-## Current state (updated 2026-07-03, Bloque/Tarea redesign shipped)
+## Current state (updated 2026-07-04, flow-model cloud sync closed in code)
 
 Two layers exist side by side:
 
@@ -103,10 +103,13 @@ project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mec
   (closed padlock + who/what blocks); plus a **right rail** (lg+) with Entrega countdown
   + time bar, Tu avance, "Te esperan" (my tasks others wait on → opens the task) and
   quick actions (nueva tarea para mí, ver el mapa). `OrganizationView` (landing) — "Sin
-  asignar" strip + one tinted column per member; drag to assign (single-owner); chips
-  HUG their text (width = title), importance reads as font/padding scale, resized from
-  a thickened bottom-left corner handle (a colored "wall", always faintly visible —
-  drag left/down to grow). `MapView` (redesigned 2026-07-03) — a centered rail
+  asignar" strip (+ a "Reiniciar reparto" button, shown only while something is
+  assigned, that returns EVERY task to the strip after a confirm) + one tinted column
+  per member; drag to assign (single-owner); chips HUG their text (width = title),
+  importance reads as font/padding scale and is **continuous** (1–10, any fraction —
+  `clampImportance` no longer rounds), resized from a thickened bottom-RIGHT corner
+  handle (a colored "wall", always faintly visible — drag right/down to grow).
+  `MapView` (redesigned 2026-07-03) — a centered rail
   of **DIAMONDS**: the "En orden" chain first with → connectors, then a divider and
   the "Independiente" blocks grouped on the other side (never links of the chain);
   connectors fade out while a diamond is being dragged (they don't follow sortable
@@ -114,38 +117,53 @@ project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mec
   a task on one = move it to that block, dashed diamond = add; exactly ONE block open
   below as a **corkboard** (`Corkboard.tsx`): free Mac-desktop positioning persisted
   as board fractions (`mapX`/`mapY`, null = zig-zag auto-layout in flow order — left,
-  indented right, left…), low-opacity dot grid that swells while dragging and pulses
+  indented right, left…; auto slots depend ONLY on the task's index in the block's
+  full list + its id, so pinning one task never moves its neighbours), low-opacity
+  dot grid that swells while dragging and pulses
   on drop (hidden under `prefers-reduced-motion`), pick-up scale/tilt animation
   (`animate-pick`, also on Personal/Organización overlays). Tasks with a `dueDate`
   get a dashed vertical guide at their center (bottom → top) with name + date on top;
   it follows the task while dragging. Deps are measured-SVG
   arrows dragged from node ports (both directions: right = bloquea a, left = depende
   de) with **magnetic snapping**, valid-target highlighting, invalid dimming, marching
-  dashed preview and a flash on connect; click-on-edge × removes. **Everyone can edit
-  everything in the map** (cycles are the only hard rule). A "Mis tareas" scope fades
-  other people's tasks to ghosts (local mode asks "¿quién eres?" first).
+  dashed preview and a flash on connect; click-on-edge × removes. Releasing a
+  connection over a node NEVER opens its popup (ports stop click propagation and the
+  corkboard swallows the click trailing a port drag for 300ms) — only a plain click
+  opens a task. **Everyone can edit everything in the map** (cycles are the only hard
+  rule). A "Mis tareas" scope fades other people's tasks to ghosts (local mode asks
+  "¿quién eres?" first).
 - **Task popup** (`TaskModal.tsx`, replaced the right SlideOver/`ModuleEditor` —
   clicking any task anywhere opens it): the task as a BIG center card — the
   protagonist (wide center column, xl title, width still scales with importance),
   "Depende de" column on the left, "Bloquea a" on the right (chips navigate the
   graph; the + pickers exclude cycles and render candidates as a loose pile of
   chips — owner tint, importance = size, stable slight rotation, no link icon),
-  remaining options below as secondary (estado, fecha, bloque, tipo, importancia,
-  responsables, descripción, checklist).
+  and below the graph TWO columns: details on the left (estado, fecha, bloque, tipo,
+  importancia, responsables, descripción), the **checklist as the protagonist on the
+  right** — its own surface card with an n/m counter, progress bar and the add box.
 - **Wizard** (6 steps): título+objetivos → equipo → plazo → ¿quién eres? → tus fortalezas →
   tareas. Continue button carries a ↵ icon (no "o pulsa Enter" copy). Cloud save happens at
   the final click behind the button (create → claim → strengths → `/p/[code]`), landing on
   Organización. `WhoAreYouScreen` gained the personal-strengths step after claiming.
-- **Cloud persistence of the new model** (no migration needed yet): a block is stored as a
-  `tasks` row of `type='milestone'` (title = name, `sort_order` = order, **mode encoded in
+- **Cloud persistence of the new model**: a block is stored as a `tasks` row of
+  `type='milestone'` (title = name, `sort_order` = order, **mode encoded in
   `description`**); `groups.strengths` jsonb now holds `{ [memberId]: string[] }` (legacy
   array tolerated on read; `setCloudMemberStrengths` merges server-side).
-- **KNOWN GAP — cloud sync**: `tasks` still has **no `block_id` / `depends_on` /
-  `importance` / `doc_type` / `map_x` / `map_y` columns**. Cloud reads default them
-  (every task lands in the first block, corkboard auto-lays out) and edits to them are
-  session-only. Next step: migration adding the columns (+ grants in the cloud-slice
-  style), regenerate/hand-update `database.types.ts`, then flip `mapping.ts`
-  readers/writers (`schemas.ts` already accepts the fields).
+- **Cloud sync of the flow model — CLOSED in code 2026-07-04** (was the KNOWN GAP):
+  migration `20260704120000_task_flow_columns.sql` adds `depends_on uuid[]` /
+  `block_id uuid` (plain, NO FK — legacy projects synthesize their first block
+  client-side) / `importance real` (continuous, check 1–10) / `doc_type` / `map_x` /
+  `map_y` to `tasks`, and re-creates `create_project_with_group` to persist them from
+  the wizard payload (milestone rows inserted first; refs outside the payload dropped,
+  never errors). `mapping.ts` reads/writes all of them (dangling deps/blockIds
+  normalized on read), `database.types.ts` hand-updated. Also fixed a **silent
+  sync-killer**: `projectModuleSchema.createdAt` needed `z.iso.datetime({ offset:
+  true })` — Supabase returns `+00:00` timestamps (not `Z`), so every edit to a
+  cloud-LOADED task failed Zod and the mirror dropped it (that's why assignments
+  "disappeared on reload"). **Migration push pending** (no Supabase credentials on
+  this machine): `npx supabase link --project-ref <ref>` + `npx supabase db push`
+  BEFORE running the new code against the cloud — the writers now send the new
+  columns unconditionally.
 
 ## Scope
 

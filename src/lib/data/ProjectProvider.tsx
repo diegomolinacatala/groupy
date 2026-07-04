@@ -51,6 +51,9 @@ export interface NewModuleInput {
   /** Pre-assign to a member (the per-column "+" in Organización). */
   assigneeId?: string | null;
   docType?: TaskDocType | null;
+  /** Pin the new task at a board position (fractions 0–1), e.g. dbl-click. */
+  mapX?: number | null;
+  mapY?: number | null;
 }
 
 export interface NewMemberInput {
@@ -218,8 +221,8 @@ export function ProjectProvider({
         blockId: input.blockId ?? firstBlock?.id ?? null,
         importance: IMPORTANCE_DEFAULT,
         docType: input.docType ?? null,
-        mapX: null,
-        mapY: null,
+        mapX: input.mapX ?? null,
+        mapY: input.mapY ?? null,
         order: project.modules.length,
         createdAt: new Date().toISOString(),
       };

@@ -9,12 +9,18 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useDndMonitor, useDraggable } from "@dnd-kit/core";
-import { Check, Lock, LockOpen, Plus, X } from "lucide-react";
+import { Check, Lock, LockOpen, X } from "lucide-react";
 import type { BlockFlow, ModuleFlow, ProjectFlow } from "@/lib/data/flow";
 import { wouldCreateCycle } from "@/lib/data/flow";
-import { importanceScale, type Project, type ProjectModule } from "@/lib/data/types";
+import {
+  IMPORTANCE_DEFAULT,
+  importanceScale,
+  type Project,
+  type ProjectModule,
+} from "@/lib/data/types";
 import { formatShort } from "@/lib/utils/dates";
 import { DocTypeBadge } from "@/components/ui/DocTypeBadge";
+import { InlineAddTask } from "@/components/ui/InlineAddTask";
 import { colorForKey } from "@/lib/utils/colors";
 import { cn } from "@/lib/utils/cn";
 
@@ -70,7 +76,9 @@ export interface CorkboardProps {
   /** Commits a free position as fractions (0–1) of the usable board. */
   onSetPosition: (id: string, fx: number, fy: number) => void;
   onOpen: (id: string) => void;
-  onAddTask: () => void;
+  onAddTask: (title: string) => void;
+  /** Create a task pinned at board fractions (0–1) — double-click to place. */
+  onAddTaskAt: (title: string, fx: number, fy: number) => void;
 }
 
 export function nodeWidth(module: ProjectModule): number {
@@ -142,6 +150,10 @@ export function autoLayoutFractions(
  * Top-left px of every node. Stored fractions win; tasks never dragged get an
  * auto slot: a ZIG-ZAG down the board (left, indented right, left…) in flow
  * order, plus a stable jitter for the hand-pinned look.
+ *
+ * The auto slot depends ONLY on the task's index in the block's full list and
+ * its own id — never on how many OTHER tasks are still auto-placed. Pinning
+ * one task must not move any of its neighbours.
  */
 function resolvePositions(
   modules: ProjectModule[],
@@ -159,18 +171,16 @@ function resolvePositions(
     });
   };
 
-  const auto: ProjectModule[] = [];
-  for (const mod of modules) {
-    if (mod.mapX !== null && mod.mapY !== null) place(mod, mod.mapX, mod.mapY);
-    else auto.push(mod);
-  }
-
-  auto.forEach((mod, i) => {
+  modules.forEach((mod, i) => {
+    if (mod.mapX !== null && mod.mapY !== null) {
+      place(mod, mod.mapX, mod.mapY);
+      return;
+    }
     const fx = (i % 2 === 0 ? 0.04 : 0.38) + hash01(mod.id) * 0.1;
     const fy =
-      auto.length <= 1
+      modules.length <= 1
         ? 0.12 + hash01(mod.id + ":y") * 0.08
-        : (i / (auto.length - 1)) * 0.85 + hash01(mod.id + ":y") * 0.05;
+        : (i / (modules.length - 1)) * 0.85 + hash01(mod.id + ":y") * 0.05;
     place(mod, fx, fy);
   });
   return positions;
@@ -185,6 +195,7 @@ export function Corkboard({
   onSetPosition,
   onOpen,
   onAddTask,
+  onAddTaskAt,
 }: CorkboardProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const nodeRefs = useRef(new Map<string, HTMLElement>());
@@ -200,12 +211,25 @@ export function Corkboard({
   const [liftedId, setLiftedId] = useState<string | null>(null);
   const [dragDelta, setDragDelta] = useState<Point | null>(null);
   const [ripple, setRipple] = useState<Point | null>(null);
+  // Double-click-to-place: an inline name field pinned at the click point.
+  const [draft, setDraft] = useState<Point | null>(null);
+  const [draftValue, setDraftValue] = useState("");
+  const draftInputRef = useRef<HTMLInputElement | null>(null);
+  // Guards against the blur that unmounting the field fires after Enter/Escape.
+  const draftHandled = useRef(false);
+  // Set while the click that trails an arrow (port) drag is still in flight:
+  // releasing a connection over a node must NEVER open its popup.
+  const suppressOpen = useRef(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   const later = (fn: () => void, ms: number) => {
     timers.current.push(setTimeout(fn, ms));
   };
+
+  useEffect(() => {
+    if (draft) draftInputRef.current?.focus();
+  }, [draft]);
 
   const modules = blockFlow.modules;
   const inBlock = new Set(modules.map((m) => m.id));
@@ -346,6 +370,41 @@ export function Corkboard({
     return { x: e.clientX - base.left, y: e.clientY - base.top };
   };
 
+  // --- double-click to place a new task -----------------------------------
+
+  /** Node footprint at default importance — the placed task's top-left. */
+  const draftNodeW = Math.round(
+    NODE_BASE_WIDTH * importanceScale(IMPORTANCE_DEFAULT),
+  );
+
+  const openDraft = (point: Point) => {
+    draftHandled.current = false;
+    setSelectedEdge(null);
+    setDraftValue("");
+    setDraft(point);
+  };
+
+  const cancelDraft = () => {
+    draftHandled.current = true;
+    setDraft(null);
+    setDraftValue("");
+  };
+
+  const commitDraft = () => {
+    if (draftHandled.current) return;
+    draftHandled.current = true;
+    const point = draft;
+    const title = draftValue.trim();
+    setDraft(null);
+    setDraftValue("");
+    if (!point || !boardSize || !title) return;
+    const usableW = Math.max(boardSize.w - draftNodeW - PAD * 2, 1);
+    const usableH = Math.max(boardSize.h - EST_NODE_H - PAD * 2, 1);
+    const fx = Math.min(1, Math.max(0, (point.x - PAD) / usableW));
+    const fy = Math.min(1, Math.max(0, (point.y - PAD) / usableH));
+    onAddTaskAt(title, fx, fy);
+  };
+
   const validTargetsFor = (
     sourceId: string,
     direction: PortDrag["direction"],
@@ -424,6 +483,12 @@ export function Corkboard({
     const drag = portDrag;
     setPortDrag(null);
     if (!drag) return;
+    // Swallow the click the browser synthesizes right after this pointerup
+    // (depending on capture it can land on the source OR the target node).
+    suppressOpen.current = true;
+    later(() => {
+      suppressOpen.current = false;
+    }, 300);
     const point = localPoint(e);
     let targetId = drag.snapId;
     if (!targetId) {
@@ -545,6 +610,12 @@ export function Corkboard({
       ref={containerRef}
       className="relative h-full w-full overflow-hidden"
       onClick={() => setSelectedEdge(null)}
+      onDoubleClick={(e) => {
+        // Only empty board space — nodes/edges are children with pointer events,
+        // the dot/halo/svg layers are pointer-events-none (never the target).
+        if (e.target !== e.currentTarget || !boardSize) return;
+        openDraft(localPoint(e));
+      }}
     >
       {/* Base dot grid — never moves, never grows. */}
       <div
@@ -579,14 +650,38 @@ export function Corkboard({
       )}
 
       {modules.length === 0 && (
-        <button
-          type="button"
-          onClick={onAddTask}
-          className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-xl border border-dashed border-line-strong px-4 py-3 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Primera tarea del bloque
-        </button>
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          <InlineAddTask
+            onAdd={onAddTask}
+            label="Primera tarea del bloque"
+            triggerClassName="flex items-center gap-1.5 rounded-xl border border-dashed border-line-strong px-4 py-3 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
+            inputClassName="w-60 rounded-xl border border-accent bg-surface px-4 py-3 text-xs font-medium text-ink outline-none ring-2 ring-accent/25 placeholder:text-muted-2"
+          />
+        </div>
+      )}
+
+      {/* Double-click draft: a task-sized name field pinned where you clicked. */}
+      {draft && (
+        <input
+          ref={draftInputRef}
+          value={draftValue}
+          onChange={(e) => setDraftValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitDraft();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              cancelDraft();
+            }
+          }}
+          onBlur={commitDraft}
+          onClick={(e) => e.stopPropagation()}
+          placeholder="Nombre de la tarea…"
+          aria-label="Nombre de la nueva tarea"
+          style={{ left: draft.x, top: draft.y, width: draftNodeW }}
+          className="absolute z-40 rounded-lg border border-l-[3px] border-accent bg-surface px-2.5 py-2 text-xs font-medium text-ink shadow-raised outline-none ring-2 ring-accent/25 placeholder:text-muted-2"
+        />
       )}
 
       {/* Edges under the nodes; paths stay clickable via pointer-events. */}
@@ -749,7 +844,10 @@ export function Corkboard({
                 if (el) nodeRefs.current.set(mod.id, el);
                 else nodeRefs.current.delete(mod.id);
               }}
-              onOpen={() => onOpen(mod.id)}
+              onOpen={() => {
+                if (suppressOpen.current) return;
+                onOpen(mod.id);
+              }}
               onPortDown={(direction, e) => startPortDrag(mod.id, direction, e)}
               onPortMove={movePortDrag}
               onPortUp={endPortDrag}
@@ -929,6 +1027,7 @@ function CorkNode({
             onPointerDown={(e) => onPortDown("in", e)}
             onPointerMove={onPortMove}
             onPointerUp={onPortUp}
+            onClick={(e) => e.stopPropagation()}
             aria-hidden
             title="Arrastra para añadir una dependencia"
             className={cn(
@@ -944,6 +1043,7 @@ function CorkNode({
             onPointerDown={(e) => onPortDown("out", e)}
             onPointerMove={onPortMove}
             onPointerUp={onPortUp}
+            onClick={(e) => e.stopPropagation()}
             aria-hidden
             title="Arrastra hasta la tarea que desbloquea"
             className={cn(

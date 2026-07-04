@@ -23,6 +23,7 @@ import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import { buildProjectFlow, orderedBlocks, type BlockFlow } from "@/lib/data/flow";
 import { BLOCK_MODE_META, type ProjectModule, type TeamMember } from "@/lib/data/types";
 import { InlineText } from "@/components/ui/InlineText";
+import { InlineAddTask } from "@/components/ui/InlineAddTask";
 import { Segmented } from "@/components/ui/Segmented";
 import { Avatar } from "@/components/ui/Avatar";
 import { cn } from "@/lib/utils/cn";
@@ -116,10 +117,15 @@ export function MapView() {
     setSelectedBlockId(addBlock());
   };
 
-  const handleAddTask = () => {
+  const handleAddTask = (title: string) => {
     if (!activeFlow) return;
-    const id = addModule({ blockId: activeFlow.block.id });
-    openModule(id);
+    addModule({ title, blockId: activeFlow.block.id });
+  };
+
+  // Double-click on empty board space: create the task pinned where you clicked.
+  const handleAddTaskAt = (title: string, mapX: number, mapY: number) => {
+    if (!activeFlow) return;
+    addModule({ title, blockId: activeFlow.block.id, mapX, mapY });
   };
 
   // "Ordenar": reset the open block's tasks to a left→right depth layout.
@@ -228,6 +234,7 @@ export function MapView() {
                 onSetPosition={setModulePosition}
                 onOpen={openModule}
                 onAddTask={handleAddTask}
+                onAddTaskAt={handleAddTaskAt}
               />
             )
           )}
@@ -435,7 +442,7 @@ function BlockBar({
   onRename: (name: string) => void;
   onToggleMode: () => void;
   onDelete: () => void;
-  onAddTask: () => void;
+  onAddTask: (title: string) => void;
   onAutoLayout: () => void;
 }) {
   const { block, state, modules, doneCount } = blockFlow;
@@ -506,14 +513,12 @@ function BlockBar({
             Ordenar
           </button>
         )}
-        <button
-          type="button"
-          onClick={onAddTask}
-          className="inline-flex items-center gap-1 rounded-lg border border-dashed border-line-strong px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Tarea
-        </button>
+        <InlineAddTask
+          onAdd={onAddTask}
+          label="Tarea"
+          triggerClassName="inline-flex items-center gap-1 rounded-lg border border-dashed border-line-strong px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
+          inputClassName="w-40 rounded-lg border border-accent bg-surface px-2.5 py-1 text-xs font-medium text-ink outline-none ring-2 ring-accent/25 placeholder:text-muted-2"
+        />
       </div>
     </div>
   );
