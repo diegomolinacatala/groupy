@@ -61,6 +61,9 @@ export function MapView() {
   const [scope, setScope] = useState<MapScope>("team");
   const [activeTask, setActiveTask] = useState<ProjectModule | null>(null);
   const [blockDragging, setBlockDragging] = useState(false);
+  // True while the air-hockey easter egg is running — hides the drag overlay so
+  // the flying task card doesn't show over the paddle.
+  const [gameActive, setGameActive] = useState(false);
   // Reported by the open Corkboard so "Ordenar" can pack columns by card width.
   const [boardSize, setBoardSize] = useState<{ w: number; h: number } | null>(
     null,
@@ -249,6 +252,7 @@ export function MapView() {
                 onAddTask={handleAddTask}
                 onAddTaskAt={handleAddTaskAt}
                 onBoardResize={setBoardSize}
+                onGameActiveChange={setGameActive}
               />
             )
           )}
@@ -261,7 +265,7 @@ export function MapView() {
           coherent target (it shot off to a corner). The landed node does an
           in-place spring "settle" instead — see Corkboard's justDropped. */}
       <DragOverlay dropAnimation={null}>
-        {activeTask ? (
+        {activeTask && !gameActive ? (
           <CorkNodeStatic project={project} module={activeTask} />
         ) : null}
       </DragOverlay>

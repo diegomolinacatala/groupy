@@ -312,6 +312,64 @@
   animation: groupy-remote-glow 900ms ease-out both;
 }
 
+/* ── Air-hockey easter egg ──────────────────────────────────────────────── */
+/* The whole neon table fades in when a game starts. */
+@keyframes groupy-air-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.air-hockey {
+  animation: groupy-air-in 260ms ease-out both;
+}
+/* Slow breathing glow on the bounds and goals. */
+@keyframes groupy-air-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.35);
+  }
+}
+.air-glow-pulse {
+  animation: groupy-air-pulse 1.8s ease-in-out infinite;
+}
+/* A soft flicker trail on the ball. */
+@keyframes groupy-air-ball {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.25);
+  }
+}
+.air-ball {
+  animation: groupy-air-ball 0.9s ease-in-out infinite;
+}
+/* Win banner pop. */
+@keyframes groupy-air-win {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.air-win-pop {
+  animation: groupy-air-win 360ms var(--ease-spring) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-rise,
   .animate-rise-delayed,
@@ -327,5 +385,15 @@
   }
   .edge-marching {
     animation: none;
+  }
+  /* The game stays fully playable, just without the looping neon motion. */
+  .air-glow-pulse,
+  .air-ball {
+    animation: none;
+  }
+  .air-hockey,
+  .air-win-pop {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
   }
 }

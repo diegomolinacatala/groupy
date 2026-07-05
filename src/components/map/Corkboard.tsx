@@ -32,6 +32,7 @@ import { DocTypeBadge } from "@/components/ui/DocTypeBadge";
 import { InlineAddTask } from "@/components/ui/InlineAddTask";
 import { colorForKey } from "@/lib/utils/colors";
 import { cn } from "@/lib/utils/cn";
+import { AirHockeyLayer } from "./AirHockey";
 
 // The corkboard INSIDE one block: tasks are pinned wherever you drop them
 // (Mac-desktop style, positions persist as board fractions), dependencies are
@@ -107,6 +108,8 @@ export interface CorkboardProps {
   onAddTaskAt: (title: string, fx: number, fy: number) => void;
   /** Reports the measured board px so "Ordenar" can pack columns by size. */
   onBoardResize?: (size: { w: number; h: number }) => void;
+  /** Fires when the air-hockey easter egg starts/ends (map hides the drag overlay). */
+  onGameActiveChange?: (active: boolean) => void;
 }
 
 export function nodeWidth(module: ProjectModule): number {
@@ -357,6 +360,7 @@ export function Corkboard({
   onAddTask,
   onAddTaskAt,
   onBoardResize,
+  onGameActiveChange,
 }: CorkboardProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const nodeRefs = useRef(new Map<string, HTMLElement>());
@@ -371,6 +375,29 @@ export function Corkboard({
   const [recentEdgeKey, setRecentEdgeKey] = useState<string | null>(null);
   const [liftedId, setLiftedId] = useState<string | null>(null);
   const [dragDelta, setDragDelta] = useState<Point | null>(null);
+  // Air-hockey easter egg: the local player's held-task pointer as a fraction
+  // of the full board (the paddle source), and a live flag that suppresses the
+  // normal drop-commit while a game owns the drag.
+  const [localPaddleFrac, setLocalPaddleFrac] = useState<{
+    fx: number;
+    fy: number;
+  } | null>(null);
+  const gameActiveRef = useRef(false);
+
+  /** Client pointer → fraction (0–1) of the full board. */
+  const boardFrac = (clientX: number, clientY: number) => {
+    const base = containerRef.current?.getBoundingClientRect();
+    if (!base || !boardSize) return null;
+    return {
+      fx: (clientX - base.left) / boardSize.w,
+      fy: (clientY - base.top) / boardSize.h,
+    };
+  };
+
+  const handleGameActiveChange = (active: boolean) => {
+    gameActiveRef.current = active;
+    onGameActiveChange?.(active);
+  };
   // The task just dropped on the board — plays a one-shot spring "settle" in
   // place (no fly-in), then clears so the animation can replay on the next drop.
   const [justDroppedId, setJustDroppedId] = useState<string | null>(null);
@@ -717,6 +744,11 @@ export function Corkboard({
         cancelDotAnimations();
         const rect = rects.get(id);
         if (rect) updateDots(rect);
+        // Seed the air-hockey paddle at the pick-up point.
+        const a = event.activatorEvent as Partial<PointerEvent> | null;
+        if (a && typeof a.clientX === "number" && typeof a.clientY === "number") {
+          setLocalPaddleFrac(boardFrac(a.clientX, a.clientY));
+        }
       }
     },
     onDragMove: (event) => {
@@ -730,27 +762,42 @@ export function Corkboard({
           y: rect.y + event.delta.y,
         });
       }
+      // The pointer (dnd capture swallows pointermove, so reconstruct it).
+      const activator = event.activatorEvent as Partial<PointerEvent> | null;
+      const px =
+        activator && typeof activator.clientX === "number"
+          ? activator.clientX + event.delta.x
+          : null;
+      const py =
+        activator && typeof activator.clientY === "number"
+          ? activator.clientY + event.delta.y
+          : null;
+      // The paddle always follows the pointer — it's the game's input source.
+      if (px !== null && py !== null) setLocalPaddleFrac(boardFrac(px, py));
+      // While a game owns the drag, don't broadcast the wandering task as a
+      // flying ghost / cursor — the paddle rides the game channel instead.
+      if (gameActiveRef.current) return;
       // The group watches the card fly in real time…
       sendLiveDrag({ x: event.delta.x, y: event.delta.y }, true);
-      // …and the pointer keeps moving too (dnd capture swallows pointermove).
-      const activator = event.activatorEvent as Partial<PointerEvent> | null;
-      if (
-        activator &&
-        typeof activator.clientX === "number" &&
-        typeof activator.clientY === "number"
-      ) {
-        sendLiveCursor(
-          activator.clientX + event.delta.x,
-          activator.clientY + event.delta.y,
-        );
-      }
+      if (px !== null && py !== null) sendLiveCursor(px, py);
     },
     onDragEnd: (event) => {
       const id = liftedId;
+      // A game owned this drag: the task never really moved (it was a paddle).
+      // Reset the peers' ghost to its origin and leave the stored position be.
+      if (gameActiveRef.current) {
+        sendLiveDrag({ x: 0, y: 0 }, false);
+        setLiftedId(null);
+        setDragDelta(null);
+        setLocalPaddleFrac(null);
+        releaseDots();
+        return;
+      }
       // Final frame BEFORE clearing lift state (sendLiveDrag reads liftedId).
       sendLiveDrag({ x: event.delta.x, y: event.delta.y }, false);
       setLiftedId(null);
       setDragDelta(null);
+      setLocalPaddleFrac(null);
       releaseDots();
       if (!id || !boardSize) return;
       // Dropped on a block diamond → the MapView moves it between blocks.
@@ -772,6 +819,7 @@ export function Corkboard({
       sendLiveDrag({ x: 0, y: 0 }, false);
       setLiftedId(null);
       setDragDelta(null);
+      setLocalPaddleFrac(null);
       releaseDots();
     },
   });
@@ -1292,7 +1340,7 @@ export function Corkboard({
                 else nodeRefs.current.delete(mod.id);
               }}
               onOpen={() => {
-                if (suppressOpen.current) return;
+                if (suppressOpen.current || gameActiveRef.current) return;
                 onOpen(mod.id);
               }}
               onPortDown={(direction, e) => startPortDrag(mod.id, direction, e)}
@@ -1387,6 +1435,21 @@ export function Corkboard({
             </div>
           );
         })}
+
+      {/* Air-hockey easter egg — cloud only, needs the live room + a measured
+          board. Inert (renders nothing) until two players hold + hold still. */}
+      {room && boardSize && (
+        <AirHockeyLayer
+          room={room}
+          blockId={blockId}
+          boardSize={boardSize}
+          project={project}
+          drags={drags}
+          localPaddle={localPaddleFrac}
+          reducedMotion={reducedMotion}
+          onActiveChange={handleGameActiveChange}
+        />
+      )}
     </div>
   );
 }
