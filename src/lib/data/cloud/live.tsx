@@ -11,13 +11,19 @@ import {
 } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import type { RemoteAction } from "../reducer";
 
 // The EPHEMERAL layer of a shared dashboard: who is connected (presence),
 // where their pointer is on the open corkboard (cursor broadcasts) and which
 // task they are dragging right now (drag broadcasts — the "flying task" the
-// rest of the group watches). Nothing here touches the database; it exists
-// only while the tabs are open. Durable state travels through
-// postgres_changes (realtime.ts), never through this channel.
+// rest of the group watches). It exists only while the tabs are open.
+//
+// It ALSO carries the broadcast-first fast path for DURABLE edits (the "edit"
+// event): when a teammate changes a task/block/member the change is broadcast
+// here for ~80ms peer application on top of being persisted through the
+// server action. postgres_changes (realtime.ts) stays the source of truth and
+// reconciles ~0.5s later; this channel just removes the wait. The reducer's
+// equality bail absorbs the duplicate when the durable event lands.
 //
 // Hot data (cursors/drags, ~12 msg/s while moving) lives OUTSIDE React state:
 // a version-ticked external store that only the components drawing it
@@ -70,6 +76,14 @@ export interface LiveRoom {
   sendGame: (payload: Record<string, unknown>) => void;
   /** Raw callback on every incoming "game" broadcast. Returns an unsubscribe. */
   subscribeGame: (onMessage: (payload: Record<string, unknown>) => void) => () => void;
+  /**
+   * Broadcast a durable edit to peers on the fast path (no throttle — every
+   * edit must arrive, and in order). Fire-and-forget; the origin tab never
+   * receives its own edit back (broadcast self:false).
+   */
+  sendEdit: (action: RemoteAction) => void;
+  /** Raw callback on every incoming "edit" broadcast. Returns an unsubscribe. */
+  subscribeEdit: (onEdit: (action: RemoteAction) => void) => () => void;
   subscribeHot: (onChange: () => void) => () => void;
   getHotVersion: () => number;
   /** Peer cursors by tabId. Read after a hot-version tick. */
@@ -186,6 +200,9 @@ export function LiveRoomProvider({
   // Game channel listeners live outside the hot store — the air-hockey loop
   // drives its own refs/rAF and must not tick the hot version.
   const gameListeners = useRef(new Set<(payload: Record<string, unknown>) => void>());
+  // Durable-edit listeners also live outside the hot store: an incoming edit
+  // goes to the reducer (a state dispatch), never the cursor/drag render path.
+  const editListeners = useRef(new Set<(action: RemoteAction) => void>());
   const channelRef = useRef<RealtimeChannel | null>(null);
   const senders = useRef<{
     cursor: ReturnType<typeof makeThrottled<Record<string, unknown>>> | null;
@@ -284,6 +301,17 @@ export function LiveRoomProvider({
       const p = payload as Record<string, unknown> | undefined;
       if (!p || typeof p !== "object") return;
       for (const listener of gameListeners.current) listener(p);
+    });
+
+    channel.on("broadcast", { event: "edit" }, ({ payload }) => {
+      // Only well-formed remote actions are forwarded; the reducer and its
+      // per-action guards do the rest. self:false means this never fires for
+      // our own edits.
+      const p = payload as Partial<RemoteAction> | undefined;
+      if (!p || typeof p.type !== "string" || !p.type.startsWith("APPLY_REMOTE_")) {
+        return;
+      }
+      for (const listener of editListeners.current) listener(p as RemoteAction);
     });
 
     channel.on("presence", { event: "sync" }, () => {
@@ -400,6 +428,20 @@ export function LiveRoomProvider({
       gameListeners.current.add(onMessage);
       return () => {
         gameListeners.current.delete(onMessage);
+      };
+    },
+    sendEdit: (action) => {
+      const channel = channelRef.current;
+      if (!channel) return;
+      // Unthrottled: durable edits are discrete (clicks, typing, one commit
+      // per resize/reorder), so there is no frame storm to smooth — and every
+      // one must land. A dropped edit is caught by postgres_changes anyway.
+      void channel.send({ type: "broadcast", event: "edit", payload: action });
+    },
+    subscribeEdit: (onEdit) => {
+      editListeners.current.add(onEdit);
+      return () => {
+        editListeners.current.delete(onEdit);
       };
     },
     subscribeHot: (onChange) => {

@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useReducer,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -31,6 +32,7 @@ import {
 import { orderedBlocks, wouldCreateCycle } from "./flow";
 import { nextMemberColorKey } from "@/lib/utils/colors";
 import { useCloudRealtime } from "./cloud/realtime";
+import { useLiveRoom, type LiveRoom } from "./cloud/live";
 import type { ProjectAction } from "./reducer";
 
 const PLACEHOLDER: Project = {
@@ -165,6 +167,57 @@ interface ProjectContextValue extends ProjectApi {
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
 
+/**
+ * Wraps the DB mirror so every durable edit is ALSO broadcast on the fast
+ * ephemeral channel (live.tsx) the instant it happens. Peers apply the same
+ * APPLY_REMOTE_* action ~80ms later instead of waiting ~0.5s on
+ * postgres_changes; that slow path then reconciles and the reducer's equality
+ * bail swallows the duplicate. Each mirror argument already IS the merged
+ * object a remote action carries, so the broadcast is a straight re-tag.
+ *
+ * Strengths stay DB-only: they are rare, off the hot path, and their remote
+ * action rewrites the whole record — not worth the fast path.
+ */
+function broadcastMirror(mirror: ProjectMirror, room: LiveRoom): ProjectMirror {
+  return {
+    updateProject: (patch) => {
+      room.sendEdit({ type: "APPLY_REMOTE_PROJECT", patch });
+      mirror.updateProject(patch);
+    },
+    upsertModule: (module) => {
+      room.sendEdit({ type: "APPLY_REMOTE_MODULE", module });
+      mirror.upsertModule(module);
+    },
+    deleteModule: (id) => {
+      room.sendEdit({ type: "APPLY_REMOTE_TASKROW_DELETE", id });
+      mirror.deleteModule(id);
+    },
+    upsertBlock: (block) => {
+      room.sendEdit({ type: "APPLY_REMOTE_BLOCK", block });
+      mirror.upsertBlock(block);
+    },
+    deleteBlock: (id) => {
+      room.sendEdit({ type: "APPLY_REMOTE_TASKROW_DELETE", id });
+      mirror.deleteBlock(id);
+    },
+    addMember: (member) => {
+      room.sendEdit({ type: "APPLY_REMOTE_MEMBER", member });
+      mirror.addMember(member);
+    },
+    updateMember: (member) => {
+      room.sendEdit({ type: "APPLY_REMOTE_MEMBER", member });
+      mirror.updateMember(member);
+    },
+    deleteMember: (id, taskPatches) => {
+      // Peers detach the member's task assignments in their own reducer
+      // (DELETE_MEMBER), so the id alone is enough on the fast path.
+      room.sendEdit({ type: "APPLY_REMOTE_MEMBER_DELETE", id });
+      mirror.deleteMember(id, taskPatches);
+    },
+    setMemberStrengths: mirror.setMemberStrengths,
+  };
+}
+
 export function ProjectProvider({
   children,
   cloud,
@@ -180,7 +233,11 @@ export function ProjectProvider({
   );
   const isReady = project.id !== "";
   const isCloud = cloud !== undefined;
-  const mirror = cloud?.mirror ?? null;
+  // The live room (cloud only) carries the broadcast-first fast path. When it
+  // exists, every mirror write also broadcasts its APPLY_REMOTE_* twin.
+  const room = useLiveRoom();
+  const mirror =
+    cloud?.mirror && room ? broadcastMirror(cloud.mirror, room) : (cloud?.mirror ?? null);
 
   // Local identity is device state, not project state — read through an
   // external store so SSR markup never depends on localStorage.
@@ -206,6 +263,11 @@ export function ProjectProvider({
   const markRemoteGlow = (id: string) => {
     setRemoteGlow((prev) => {
       const now = Date.now();
+      // The broadcast fast path already glowed this edit ~0.5s ago; when the
+      // postgres_changes copy lands, keep the original timestamp so the
+      // highlight doesn't restart on the reconciliation echo.
+      const existing = prev.get(id);
+      if (existing !== undefined && now - existing < 5000) return prev;
       const next = new Map<string, number>();
       // Self-pruning: stale entries drop whenever a new one comes in.
       for (const [key, ts] of prev) {
@@ -230,6 +292,19 @@ export function ProjectProvider({
     tabId: cloud?.tabId ?? "",
     apply: applyRemote,
   });
+
+  // Broadcast-first fast path: teammates' edits arrive here in ~80ms (vs the
+  // ~0.5s postgres_changes lag), applied through the SAME reducer actions.
+  // applyRemote is read through a ref (kept fresh in an effect) so the
+  // subscription only re-runs when the room itself changes.
+  const applyRemoteRef = useRef(applyRemote);
+  useEffect(() => {
+    applyRemoteRef.current = applyRemote;
+  });
+  useEffect(() => {
+    if (!room) return;
+    return room.subscribeEdit((action) => applyRemoteRef.current(action));
+  }, [room]);
 
   const currentMemberId = isCloud
     ? cloud.currentMemberId

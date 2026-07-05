@@ -56,6 +56,17 @@ export type ProjectAction =
       record: Record<string, string[]>;
     };
 
+/**
+ * The remote-application subset of {@link ProjectAction}: the actions the
+ * realtime layer (postgres_changes) and the broadcast-first fast path
+ * (live.tsx) dispatch when a teammate's edit arrives. Every variant is pure
+ * data, so it round-trips as a broadcast JSON payload unchanged.
+ */
+export type RemoteAction = Extract<
+  ProjectAction,
+  { type: `APPLY_REMOTE_${string}` }
+>;
+
 function touch(project: Project): Project {
   return { ...project, updatedAt: new Date().toISOString() };
 }
