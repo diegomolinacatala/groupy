@@ -416,6 +416,7 @@ export function Corkboard({
     >(),
   );
   const dotAnimations = useRef<Animation[]>([]);
+  const dotSvgRef = useRef<SVGSVGElement | null>(null);
   const lastFieldRect = useRef<Rect | null>(null);
   // Read once — decorative dot motion is skipped entirely under reduced motion.
   const [reducedMotion] = useState(
@@ -1068,38 +1069,43 @@ export function Corkboard({
   // NOT on every drag-move re-render.
   const dotField = useMemo(() => {
     if (!boardSize) return null;
-    const circles = [];
+    // Grid coordinates first, JSX second: the React Compiler refuses loop
+    // variables mutated after being captured by JSX.
+    const points: Point[] = [];
     for (let y = DOT_SPACING / 2; y < boardSize.h; y += DOT_SPACING) {
       for (let x = DOT_SPACING / 2; x < boardSize.w; x += DOT_SPACING) {
-        const key = `${x}:${y}`;
-        circles.push(
-          <circle
-            key={key}
-            cx={x}
-            cy={y}
-            r={1.1}
-            fill="rgba(29, 28, 23, 0.14)"
-            className="corkboard-dot"
-            ref={(el) => {
-              if (el) {
-                dots.current.set(key, {
-                  el,
-                  x,
-                  y,
-                  dx: 0,
-                  dy: 0,
-                  hidden: false,
-                });
-              } else {
-                dots.current.delete(key);
-              }
-            }}
-          />,
-        );
+        points.push({ x, y });
       }
     }
-    return circles;
+    return points.map(({ x, y }) => (
+      <circle
+        key={`${x}:${y}`}
+        cx={x}
+        cy={y}
+        r={1.1}
+        fill="rgba(29, 28, 23, 0.14)"
+        className="corkboard-dot"
+      />
+    ));
   }, [boardSize]);
+
+  // Index the rendered dots for the imperative displacement code. An effect
+  // (not per-circle ref callbacks) so no render-phase closure touches the ref
+  // — the React Compiler refuses those.
+  useLayoutEffect(() => {
+    const svg = dotSvgRef.current;
+    const map = dots.current;
+    map.clear();
+    if (!svg) return;
+    for (const el of svg.querySelectorAll<SVGCircleElement>(
+      "circle.corkboard-dot",
+    )) {
+      const x = Number(el.getAttribute("cx"));
+      const y = Number(el.getAttribute("cy"));
+      map.set(`${x}:${y}`, { el, x, y, dx: 0, dy: 0, hidden: false });
+    }
+    return () => map.clear();
+  }, [dotField]);
 
   // Dated tasks get a vertical guide at their center — bottom of the board up
   // to a name + date label at the top. rectFor keeps it glued during drags.
@@ -1136,6 +1142,7 @@ export function Corkboard({
       {/* Dot field: real SVG dots so they can make room for the traveling
           card and spring back home on drop. */}
       <svg
+        ref={dotSvgRef}
         aria-hidden
         className="pointer-events-none absolute inset-0 h-full w-full"
       >

@@ -45,6 +45,7 @@ const SPRING_EASING = "cubic-bezier(0.32, 1.25, 0.32, 1)";
 export function MapView() {
   const {
     project,
+    isTemplate,
     currentMemberId,
     setCurrentMember,
     toggleDependency,
@@ -185,15 +186,18 @@ export function MapView() {
           </div>
 
           <div className="md:justify-self-end">
-            <Segmented
-              size="sm"
-              options={[
-                { value: "team", label: "Equipo" },
-                { value: "mine", label: "Mis tareas" },
-              ]}
-              value={scope}
-              onChange={(value) => setScope(value)}
-            />
+            {/* A template has no "mí": the scope toggle waits for a team. */}
+            {!isTemplate && (
+              <Segmented
+                size="sm"
+                options={[
+                  { value: "team", label: "Equipo" },
+                  { value: "mine", label: "Mis tareas" },
+                ]}
+                value={scope}
+                onChange={(value) => setScope(value)}
+              />
+            )}
           </div>
         </div>
 

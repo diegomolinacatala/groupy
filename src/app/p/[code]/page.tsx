@@ -5,8 +5,11 @@ import { CloudProjectProvider } from "@/lib/data/cloud/CloudProjectProvider";
 import { DashboardUiProvider } from "@/lib/ui/dashboard-ui";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { WhoAreYouScreen } from "@/components/cloud/WhoAreYouScreen";
+import { TemplateLanding } from "@/components/cloud/TemplateLanding";
 
-// Cloud project dashboard, addressed by share code (/p/AF3322F).
+// Cloud project dashboard, addressed by share code (/p/AF3322F). ONE box for
+// every code: a class (template) code renders the template landing, a group
+// code the who-are-you / dashboard flow.
 // Server component: cookies() inside the Supabase client makes it dynamic,
 // so every visit re-reads the project under the visitor's own RLS view.
 
@@ -33,6 +36,10 @@ export default async function CloudProjectPage({
         </Link>
       </div>
     );
+  }
+
+  if (result.state === "template") {
+    return <TemplateLanding preview={result.preview} />;
   }
 
   if (result.state === "who_are_you") {

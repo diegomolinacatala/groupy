@@ -103,6 +103,11 @@ export interface CloudBinding {
   groupId: string;
   /** Ephemeral id of this mounted dashboard (echo suppression). */
   tabId: string;
+  /**
+   * A TEMPLATE is a project without members, edited by its teacher: the
+   * member-facing UI (estado, responsables, identity) hides itself.
+   */
+  kind?: "project" | "template";
 }
 
 interface ProjectApi {
@@ -154,6 +159,8 @@ interface ProjectContextValue extends ProjectApi {
   isReady: boolean;
   /** "local" = localStorage demo, "cloud" = Supabase-backed shared project. */
   mode: "local" | "cloud";
+  /** True inside the teacher's template editor (no members, no statuses). */
+  isTemplate: boolean;
   joinCode: string | null;
   /** Member this session acts as (claimed in cloud, picked in local). */
   currentMemberId: string | null;
@@ -542,6 +549,7 @@ export function ProjectProvider({
     project,
     isReady,
     mode: isCloud ? "cloud" : "local",
+    isTemplate: cloud?.kind === "template",
     joinCode: cloud?.joinCode ?? null,
     currentMemberId,
     remoteGlow,

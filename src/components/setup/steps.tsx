@@ -55,9 +55,10 @@ const chipClass = (active: boolean) =>
 
 /**
  * Shared quick-entry list (team, tasks): type, Enter, type, Enter. Enter on
- * an empty input advances the step.
+ * an empty input advances the step. Also reused by the template landing's
+ * "crear grupo" mini-wizard.
  */
-function QuickList({
+export function QuickList({
   items,
   placeholder,
   inputLabel,

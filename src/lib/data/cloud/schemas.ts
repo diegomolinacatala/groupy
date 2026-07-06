@@ -126,6 +126,25 @@ export const claimInputSchema = z.object({
   memberId: z.uuid(),
 });
 
+// "Crear grupo" from a template landing: the class code + the declared team.
+// Color keys are assigned client-side (same palette logic as the wizard).
+export const createGroupInputSchema = z.object({
+  code: z.string().min(4).max(12),
+  members: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(100),
+        colorKey: z.string().max(40),
+      }),
+    )
+    .min(1)
+    .max(20),
+});
+
+export const deleteTemplateInputSchema = z.object({
+  templateId: z.uuid(),
+});
+
 // --- RPC response contracts -------------------------------------------------
 
 export const rpcCreateResultSchema = z.object({
@@ -141,7 +160,23 @@ export const rpcClaimResultSchema = z.object({
   join_code: z.string().min(4).max(12),
 });
 
+export const rpcCreateTemplateResultSchema = z.object({
+  project_id: z.uuid(),
+  group_id: z.uuid(),
+  join_code: z.string().min(4).max(12),
+});
+
+export const rpcCreateGroupResultSchema = z.object({
+  project_id: z.uuid(),
+  group_id: z.uuid(),
+  join_code: z.string().min(4).max(12),
+  // Insertion order matches the declared team, so the client can claim the
+  // "¿quién eres?" pick by index.
+  members: z.array(z.object({ id: z.uuid(), name: z.string() })),
+});
+
 export const projectPreviewSchema = z.object({
+  kind: z.literal("group"),
   project: z.object({
     id: z.uuid(),
     title: z.string(),
@@ -163,3 +198,57 @@ export const projectPreviewSchema = z.object({
   my_member_id: z.uuid().nullable(),
 });
 export type ProjectPreview = z.infer<typeof projectPreviewSchema>;
+
+// Roster entry of a spawned group as the landing/overview shows it: name +
+// color + whether that seat is taken. Never emails, never task data.
+export const rosterMemberSchema = z.object({
+  display_name: z.string(),
+  color_key: z.string(),
+  claimed: z.boolean(),
+});
+
+export const spawnedGroupSchema = z.object({
+  join_code: z.string(),
+  created_at: z.iso.datetime({ offset: true }),
+  members: z.array(rosterMemberSchema),
+});
+export type SpawnedGroup = z.infer<typeof spawnedGroupSchema>;
+
+// A class (template) code resolves to the assignment card + spawned groups.
+export const templatePreviewSchema = z.object({
+  kind: z.literal("template"),
+  template: z.object({
+    id: z.uuid(),
+    title: z.string(),
+    description: z.string(),
+    join_code: z.string(),
+    start_date: isoDate.nullable(),
+    due_date: isoDate.nullable(),
+    task_count: z.number().int().min(0),
+  }),
+  is_owner: z.boolean(),
+  groups: z.array(spawnedGroupSchema),
+  my_group_code: z.string().nullable(),
+});
+export type TemplatePreview = z.infer<typeof templatePreviewSchema>;
+
+export const codeLookupSchema = z.discriminatedUnion("kind", [
+  projectPreviewSchema,
+  templatePreviewSchema,
+]);
+
+// The teacher's home payload (get_teacher_overview).
+export const teacherTemplateSchema = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  description: z.string(),
+  join_code: z.string(),
+  start_date: isoDate.nullable(),
+  due_date: isoDate.nullable(),
+  created_at: z.iso.datetime({ offset: true }),
+  task_count: z.number().int().min(0),
+  groups: z.array(spawnedGroupSchema),
+});
+export type TeacherTemplate = z.infer<typeof teacherTemplateSchema>;
+
+export const teacherOverviewSchema = z.array(teacherTemplateSchema);

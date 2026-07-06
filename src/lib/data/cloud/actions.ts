@@ -4,12 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 import type { Json, TablesUpdate } from "@/lib/supabase/database.types";
 import {
   claimInputSchema,
+  createGroupInputSchema,
   createProjectInputSchema,
   deleteMemberInputSchema,
   deleteTaskInputSchema,
   memberInputSchema,
   memberStrengthsInputSchema,
   rpcClaimResultSchema,
+  rpcCreateGroupResultSchema,
   rpcCreateResultSchema,
   updateProjectInputSchema,
   upsertBlockInputSchema,
@@ -117,7 +119,63 @@ function humanizeClaimError(message: string): string {
   if (message.includes("MEMBER_NOT_FOUND")) {
     return "Ese miembro ya no existe en el proyecto.";
   }
+  if (message.includes("TEACHER_CANNOT_CLAIM")) {
+    return "Estás dentro con una cuenta de profesor: los profesores no pueden ocupar el sitio de un alumno.";
+  }
   return message;
+}
+
+/**
+ * Spawns a group from a class (template) code: the server copies the
+ * template's tasks into a fresh project and declares the team unclaimed.
+ * The caller claims their own seat right after (claimCloudMember).
+ */
+export async function createGroupFromTemplate(
+  input: unknown,
+): Promise<
+  | {
+      ok: true;
+      joinCode: string;
+      members: { id: string; name: string }[];
+    }
+  | { ok: false; error: string }
+> {
+  const parsed = createGroupInputSchema.safeParse(input);
+  if (!parsed.success) return INVALID_INPUT;
+
+  const supabase = await createClient();
+  const user = await ensureUser(supabase);
+  if (!user) {
+    return {
+      ok: false,
+      error:
+        "No se pudo crear la sesión anónima. ¿Está activado «Anonymous sign-ins» en Supabase?",
+    };
+  }
+
+  const { data, error } = await supabase.rpc("create_group_from_template", {
+    p_code: parsed.data.code,
+    p_members: parsed.data.members.map((m) => ({
+      name: m.name,
+      color_key: m.colorKey,
+    })),
+  });
+  if (error) {
+    if (error.message.includes("TEMPLATE_NOT_FOUND")) {
+      return { ok: false, error: "Ese código de clase ya no existe." };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  const result = rpcCreateGroupResultSchema.safeParse(data);
+  if (!result.success) {
+    return { ok: false, error: "Respuesta inesperada del servidor." };
+  }
+  return {
+    ok: true,
+    joinCode: result.data.join_code,
+    members: result.data.members,
+  };
 }
 
 export async function updateCloudProject(

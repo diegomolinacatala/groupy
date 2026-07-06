@@ -1,11 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Project } from "../types";
 import { rowsToProject } from "./mapping";
-import { projectPreviewSchema, type ProjectPreview } from "./schemas";
+import {
+  codeLookupSchema,
+  type ProjectPreview,
+  type TemplatePreview,
+} from "./schemas";
 
-// Server-side loader for /p/[code]. The preview RPC works for anyone holding
-// the code (that's the point of a share code); the full load below it only
-// succeeds once RLS recognizes the caller as a claimed group member.
+// Server-side loader for /p/[code]. ONE code box serves both worlds: a class
+// (template) code lands on the template page, a group code on the who-are-you
+// / dashboard flow. The preview RPC works for anyone holding the code (that's
+// the point of a share code); the full load below it only succeeds once RLS
+// recognizes the caller as a claimed group member.
 
 export interface CloudProjectContext {
   projectId: string;
@@ -17,6 +23,7 @@ export interface CloudProjectContext {
 export type CloudProjectResult =
   | { state: "not_found" }
   | { state: "error"; message: string }
+  | { state: "template"; preview: TemplatePreview }
   | { state: "who_are_you"; preview: ProjectPreview }
   | { state: "ready"; project: Project; ctx: CloudProjectContext };
 
@@ -31,15 +38,20 @@ export async function loadCloudProject(
   if (error) return { state: "error", message: error.message };
   if (data === null) return { state: "not_found" };
 
-  const preview = projectPreviewSchema.safeParse(data);
-  if (!preview.success) {
+  const lookup = codeLookupSchema.safeParse(data);
+  if (!lookup.success) {
     return { state: "error", message: "Respuesta inesperada del servidor." };
   }
 
-  const memberId = preview.data.my_member_id;
-  if (!memberId) return { state: "who_are_you", preview: preview.data };
+  const preview = lookup.data;
+  if (preview.kind === "template") {
+    return { state: "template", preview };
+  }
 
-  const projectId = preview.data.project.id;
+  const memberId = preview.my_member_id;
+  if (!memberId) return { state: "who_are_you", preview };
+
+  const projectId = preview.project.id;
   const [projectRes, groupRes] = await Promise.all([
     supabase.from("projects").select("*").eq("id", projectId).single(),
     supabase
@@ -90,7 +102,7 @@ export async function loadCloudProject(
       projectId,
       groupId: group.id,
       memberId,
-      joinCode: preview.data.project.join_code,
+      joinCode: preview.project.join_code,
     },
   };
 }

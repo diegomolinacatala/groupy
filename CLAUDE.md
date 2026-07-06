@@ -43,7 +43,7 @@ Supabase Anonymous Auth creates a persistent per-device session; the student onl
 `display_name` + `email` as profile data on their `group_members` row. RLS then works via
 `auth.uid()` for both roles — no parallel token system.
 
-## Current state (updated 2026-07-04 late, friction pass: wizard · identity · tab memory)
+## Current state (updated 2026-07-06: teacher templates + teacher role shipped)
 
 Two layers exist side by side:
 
@@ -212,6 +212,82 @@ project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mec
   `dispatchEvent` in this stack — drive real interactions (preview_fill/click) when
   testing, or you'll chase phantom "sync" bugs.
 
+### Plantillas de profesor + rol profesor — shipped 2026-07-06
+
+The teacher vertical is LIVE end to end: account → template → class code → groups
+spawn themselves → teacher sees roster only.
+
+- **Model decision (supersedes the doc's templates tables): a TEMPLATE is a
+  `projects` row with `is_template = true` and NO members** — same implicit group,
+  same task/milestone rows, same mapping/mirror/reducer. Migration
+  `20260706100000_teacher_templates.sql` DROPPED the never-used `templates` /
+  `template_items` tables and `tasks.template_item_id`; `projects.template_id` now
+  self-references the template project (on delete set null, so deleting a template
+  orphans its groups gracefully). The template's `join_code` IS the **class code**:
+  one input box serves both kinds (`get_project_by_code` now returns a
+  `kind: 'template' | 'group'` discriminator).
+- **Roles enforced in RLS** (see the Roles section below): teacher = real
+  email+password account; new policies (via `app.my_template_group_ids()`) give the
+  teacher full CRUD **only** over their template rows; a RESTRICTIVE policy blocks
+  anonymous sessions from ever minting `is_template`; `claim_member` now REFUSES
+  non-anonymous callers (`TEACHER_CANNOT_CLAIM`) so a signed-in teacher can't
+  occupy a student seat to peek at live work.
+- **RPCs**: `create_template()` (teacher-only: project + implicit group + starting
+  block), `create_group_from_template(p_code, p_members)` (copies title/brief/dates
+  + every task/block row with fresh uuids — `depends_on`/`block_id` remapped through
+  a CTE id-map, statuses + checklist ticks reset, nothing assigned; members declared
+  unclaimed, caller claims by index right after), `get_teacher_overview()` (templates
+  + spawned groups with roster: names/colors/claimed — NEVER emails, NEVER task
+  data), and the replaced `get_project_by_code` (template kind = assignment card +
+  groups roster + `my_group_code` + `is_owner`).
+- **Teacher UI** (`src/components/teacher/`, routes `/profesor` +
+  `/profesor/plantilla/[id]`): access screen (Entrar/Crear cuenta segmented; email
+  confirmation is ON in the hosted project → the "revisa tu correo" state is real),
+  home with template cards (class-code chip, groups roster with claimed avatars,
+  Editar, delete with confirm) and the **template editor** = slim own shell (back
+  link, title InlineText, inicio/entrega DateFields, brief textarea students will
+  read, class-code chip) + the SAME `MapView` + `TaskModal`. Auth server actions in
+  `src/lib/auth/` (signUp returns `needsEmailConfirmation`); homepage header links
+  "Para profesores".
+- **Template mode in shared views**: `CloudBinding.kind: "project" | "template"` →
+  context `isTemplate`; `TemplateProvider` (no live room, no identity) binds the
+  editor. TaskModal hides estado/responsables/lock-banner; MapView hides the
+  Equipo/Mis-tareas scope toggle. Everything else (deps, bloques, importance,
+  docType, checklist, fechas, positions) edits exactly like a group dashboard and
+  mirrors through the SAME actions (teacher RLS covers those writes).
+- **Student flow**: `/p/<CLASSCODE>` → `TemplateLanding` (assignment card, existing
+  groups with roster + "n/m dentro" + "Tu grupo" highlight via `my_group_code`,
+  owner sees "Es tu plantilla — editarla") → "Crear vuestro grupo" = 2-beat inline
+  mini-wizard (¿quiénes sois? via exported `QuickList` → ¿quién eres? tap = create)
+  behind the same min-2s SavingScreen → claim → `/p/<groupcode>` landing on
+  Organización (first-visit rule) with the teacher's tasks in "Sin asignar".
+- **Verified behaviorally against the hosted DB (2026-07-06)**: teacher flow
+  (sign-up → confirm → template `MCC57RV` with 4 tasks + 1 dependency + dates +
+  brief, everything round-trips reloads) and student flow (class code → group
+  `AM5ZQ4Y` spawned with the dependency remapped → Marta claimed → Organización).
+  **RLS probe 6/6 PASS** (scratchpad script, not committed): teacher⇸spawned tasks,
+  teacher⇸spawned members/emails, anon⇸template tasks, teacher✔own template tasks
+  (positive control), teacher⇸claim seat, anon⇸create_template. Test data
+  `MCC57RV`/`AM5ZQ4Y` + dummy teacher `diegomolinacatala+profe@gmail.com` are junk,
+  safe to delete. `database.types.ts` hand-updated (tables dropped, `is_template`,
+  3 new RPCs).
+- **Not in this slice**: close/peer-eval/report-to-teacher (teacher still has no
+  Informe access), template duplication, and retro-updates — editing a template
+  after sharing does NOT touch already-spawned groups (copy-on-spawn, by design).
+
+## Roles (locked by RLS, not by UI)
+
+| Capability | Alumno (anonymous session) | Profesor (email+password account) |
+|---|---|---|
+| Create / edit templates | ❌ (restrictive policy) | ✅ own only (`is_template` scoped) |
+| Read template task rows | ❌ (only the count via preview RPC) | ✅ own only |
+| Spawn a group from a class code | ✅ (that IS the student entry) | ✅ possible but pointless (can't claim) |
+| Claim a seat (`claim_member`) | ✅ | ❌ `TEACHER_CANNOT_CLAIM` |
+| Live group work (tasks/checklists/statuses/log) | ✅ own group only | ❌ NEVER (no policy) |
+| Group roster (names + claimed flags) | ✅ via code preview | ✅ via overview/preview — never emails |
+| Student emails | ✅ own group | ❌ live; ✅ only in the future closing report |
+| Delete | own group's tasks/members | own templates (spawned groups keep working) |
+
 ### Informe para el profesor — shipped 2026-07-05
 
 - New dashboard tab **Informe** (sidebar group "Entrega", `view: "report"`), same
@@ -268,39 +344,53 @@ Teacher creates template → gets share code
             → teacher opens it (in-progress work stays hidden)
 ```
 
-## Data model
+## Data model (as-built 2026-07-06 — templates live in `projects`)
 
 ```
-templates        (id, teacher_id→auth.users, title, objectives, rubric)
- └ template_items (id, template_id, type: task|milestone|objective, title, order)
-projects          (id, template_id, teacher_id, join_code,
-                   status: active|in_review|closed, due_at)
-groups            (id, project_id, name, join_code, created_by_member)
- └ group_members  (id, group_id, auth_uid→auth.users(anon), display_name, email, is_coordinator)
-tasks             (id, group_id, template_item_id?, title, assignee_member, status, done_at)
+projects          (id, template_id→projects (self-ref, set null), teacher_id, title,
+                   description, join_code, is_template, status: active|in_review|closed,
+                   start_date, due_at)
+                   -- is_template=true = a TEACHER TEMPLATE: no members, its join_code
+                   --   is the CLASS code, its tasks are the blueprint copied on spawn.
+                   -- is_template=false + template_id = a group spawned from that template.
+groups            (id, project_id, name, join_code, created_by_member, strengths jsonb)
+ └ group_members  (id, group_id, auth_uid→auth.users(anon, nullable=unclaimed),
+                   display_name, email, role, color_key, is_coordinator)
+tasks             (id, group_id, title, description, type task|milestone(=bloque),
+                   status, due_date, sort_order, checklist jsonb, assignees uuid[],
+                   depends_on uuid[], block_id, importance real, doc_type,
+                   map_x/map_y, last_origin, done_at)
 activity_log      (id, group_id, actor_member, action, note, created_at)   -- manual check-ins
 peer_evaluations  (id, project_id, group_id, rater_member, ratee_member, score, comment)
 reports           (id, project_id, group_id, generated_at, payload jsonb)  -- immutable snapshot
 ```
 
-Teacher identity = `auth.users` (real account). Student identity = `auth.users` anonymous
-session, joined to a `group_members` row. Report `payload` is an immutable snapshot at close.
+The doc's `templates` / `template_items` tables were dropped 2026-07-06 (never used):
+a template IS a project — one model, one editor, one mapping layer. Teacher identity =
+`auth.users` (real account). Student identity = `auth.users` anonymous session, joined
+to a `group_members` row. Report `payload` is an immutable snapshot at close.
 
 ## RLS matrix (enforces the hard rule)
 
 | Table | Student (anon `auth.uid`) | Teacher (`auth.uid`) |
 |-------|---------------------------|----------------------|
-| templates / template_items | ❌ | ✅ own only |
-| projects | ✅ where participating | ✅ own only |
-| groups / group_members / tasks / activity_log | ✅ own group | ❌ **never live** |
+| projects (is_template) | ❌ rows (code preview via RPC only) | ✅ own only (restrictive policy: anon can never insert one) |
+| projects (groups) | ✅ where participating | ✅ own rows (meta only — title/dates/status) |
+| groups / group_members / tasks / activity_log | ✅ own group | ❌ **never live** (template task rows are the one teacher-scoped exception) |
 | peer_evaluations | ✅ writes own | ❌ |
 | reports | ✅ own group's | ✅ **only window into the work** |
 
+Extra guard: `claim_member` refuses non-anonymous sessions, so a signed-in teacher can
+never become a group member and inherit student-level reads.
+
 ## Server Actions (Next 16)
 
-`createTemplate` · `createProject` · `joinByCode` · `createGroup` / `joinGroup` ·
-`upsertTask` · `logCheckin` · `submitPeerEval` · `closeProject → generateReport` ·
-`getReport`
+Built: `createTeacherTemplate` / `deleteTeacherTemplate` (template-actions.ts) ·
+`signUpTeacher` / `signInTeacher` / `signOutTeacher` (auth) · `createCloudProject` ·
+`createGroupFromTemplate` · `claimCloudMember` · `updateCloudProject` ·
+`upsertCloudTask` / `upsertCloudBlock` / `deleteCloudTask` · member CRUD ·
+`setCloudMemberStrengths`. Pending: `logCheckin` · `submitPeerEval` ·
+`closeProject → generateReport` · `getReport`.
 
 ## Success criteria (verifiable)
 
@@ -312,19 +402,21 @@ session, joined to a `group_members` row. Report `payload` is an immutable snaps
 
 ## Engineering roadmap
 
-> Status 2026-07-02 (evening): **1–3 done** — the cloud slice shipped (anonymous auth,
-> join-by-code, behavioral RLS validation). **Next:** teacher accounts (email+password) or
-> the vertical slices in 5.
+> Status 2026-07-06: **1–4 done + the templates vertical** — teacher accounts, template
+> editor, class code, group spawn and roles/RLS shipped and probed. **Next:** the closing
+> vertical (peer-eval → close → report handed to the teacher).
 
 1. **Bootstrap** — ✅ Next 16 app, deps, `.env.local`, dev runs.
 2. **Auth** — ✅ student **anonymous auth + join-by-code** live (`/p/[code]` claim flow).
-   Teacher accounts (email+password) deferred to a later slice.
-3. **Data** — ✅ two migrations pushed (schema foundation + cloud slice) + TS types.
-   ✅ RLS **validated behaviorally with dummy data** (37 checks: creator/member/stranger/no-session).
-4. **UI shell** — app layout, role-based nav, design tokens, base states. *(prototype UI already exists)*
-5. **Verticals** — templates · projects/groups · tasks + check-ins · peer-eval.
-6. **Dashboard** — teacher (projects + reports) / student (group, tasks, progress).
-7. **Report** — individual + group aggregation (web view).
+   ✅ Teacher accounts (email+password) live at `/profesor` (email confirmation ON).
+3. **Data** — ✅ five migrations pushed + hand-synced TS types.
+   ✅ RLS **validated behaviorally with dummy data** (37 checks cloud slice + 6 checks
+   teacher templates: teacher/anon vs template rows, spawned work, claim guard).
+4. **UI shell** — ✅ role-based: student dashboard tabs, teacher home + template editor.
+5. **Verticals** — ✅ templates (create/edit/share/spawn) · ✅ projects/groups ·
+   ✅ tasks (check-ins pending) · ⬜ peer-eval.
+6. **Dashboard** — ✅ student · ✅ teacher (templates + groups roster; reports pending).
+7. **Report** — ✅ student-side Informe tab; ⬜ close flow + teacher delivery.
 8. **Pilot hardening** — GDPR consent + retention (after ethics green light).
 
 ## Pilot prerequisites (non-engineering, run in parallel)

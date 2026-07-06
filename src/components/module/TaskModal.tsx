@@ -74,6 +74,7 @@ function jitterDeg(seed: string): number {
 export function TaskModal() {
   const {
     project,
+    isTemplate,
     updateModule,
     deleteModule,
     toggleAssignee,
@@ -234,7 +235,9 @@ export function TaskModal() {
                 </div>
               </div>
 
-              {isLocked && flowEntry && (
+              {/* In a template everything is pendiente by definition — the
+                  "waiting on…" banner only means something once a group works. */}
+              {!isTemplate && isLocked && flowEntry && (
                 <div
                   className="mx-auto mt-4 flex w-fit items-start gap-2 rounded-lg px-3 py-2 text-xs"
                   style={{
@@ -347,6 +350,9 @@ export function TaskModal() {
                     </div>
                   </Field>
 
+                  {/* A template has no team yet: los responsables se deciden
+                      cuando el grupo reparte. */}
+                  {!isTemplate && (
                   <Field label="Responsables">
                     <div className="flex flex-wrap items-center gap-2">
                       {project.members
@@ -393,6 +399,7 @@ export function TaskModal() {
                       />
                     </div>
                   </Field>
+                  )}
                     <div className="sm:col-span-2">
                       <Field label="Descripción">
                         <InlineText
@@ -547,7 +554,7 @@ function TaskCard({
   module: ProjectModule;
   locked: boolean;
 }) {
-  const { updateModule } = useProject();
+  const { updateModule, isTemplate } = useProject();
   const scale = importanceScale(module.importance);
   const owner = project.members.find((m) => module.assigneeIds.includes(m.id));
   const ownerColor = owner ? colorForKey(owner.colorKey) : null;
@@ -579,14 +586,15 @@ function TaskCard({
             done && "text-muted line-through",
           )}
         />
-        {done ? (
-          <Check
-            className="mt-1 h-[18px] w-[18px] shrink-0 text-done"
-            strokeWidth={3}
-          />
-        ) : (
-          <LockOpen className="mt-1 h-[18px] w-[18px] shrink-0 text-muted" />
-        )}
+        {!isTemplate &&
+          (done ? (
+            <Check
+              className="mt-1 h-[18px] w-[18px] shrink-0 text-done"
+              strokeWidth={3}
+            />
+          ) : (
+            <LockOpen className="mt-1 h-[18px] w-[18px] shrink-0 text-muted" />
+          ))}
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-muted">
@@ -608,25 +616,28 @@ function TaskCard({
         )}
       </div>
 
-      {/* The status, right where you look when you open a task. */}
-      <div className="mt-4 border-t border-line/70 pt-3">
-        <Segmented
-          size="sm"
-          stretch
-          options={STATUS_OPTIONS.map((option) => ({
-            ...option,
-            // The padlock: a locked task can't move forward until its
-            // prerequisites are done (going back is fine).
-            disabled:
-              locked &&
-              option.value !== "todo" &&
-              option.value !== module.status,
-            disabledReason: "Bloqueada",
-          }))}
-          value={module.status}
-          onChange={(status) => updateModule(module.id, { status })}
-        />
-      </div>
+      {/* The status, right where you look when you open a task. A template
+          has no progress yet — the estado belongs to the groups. */}
+      {!isTemplate && (
+        <div className="mt-4 border-t border-line/70 pt-3">
+          <Segmented
+            size="sm"
+            stretch
+            options={STATUS_OPTIONS.map((option) => ({
+              ...option,
+              // The padlock: a locked task can't move forward until its
+              // prerequisites are done (going back is fine).
+              disabled:
+                locked &&
+                option.value !== "todo" &&
+                option.value !== module.status,
+              disabledReason: "Bloqueada",
+            }))}
+            value={module.status}
+            onChange={(status) => updateModule(module.id, { status })}
+          />
+        </div>
+      )}
     </div>
   );
 }

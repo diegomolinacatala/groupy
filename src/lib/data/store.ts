@@ -1,5 +1,5 @@
 import type { Project, ProjectBlock } from "./types";
-import { clampImportance, IMPORTANCE_DEFAULT } from "./types";
+import { clampImportance, DOC_TYPE_META, IMPORTANCE_DEFAULT } from "./types";
 import { createSeedProject } from "./seed";
 
 // localStorage-backed persistence for the local prototype. Isolated here so the
@@ -43,7 +43,12 @@ function normalizeProject(parsed: Project): Project {
         typeof m.importance === "number"
           ? clampImportance(m.importance)
           : IMPORTANCE_DEFAULT,
-      docType: typeof m.docType === "string" ? m.docType : null,
+      // Same narrowing as the cloud mapping: an unknown value would crash
+      // DOC_TYPE_META lookups at render time.
+      docType:
+        typeof m.docType === "string" && m.docType in DOC_TYPE_META
+          ? m.docType
+          : null,
       mapX: typeof m.mapX === "number" ? Math.min(1, Math.max(0, m.mapX)) : null,
       mapY: typeof m.mapY === "number" ? Math.min(1, Math.max(0, m.mapY)) : null,
     })),

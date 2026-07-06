@@ -59,12 +59,20 @@ export default function Home() {
     <div className="flex min-h-dvh flex-col bg-canvas">
       <header className="flex items-center justify-between px-6 py-5 md:px-10">
         <span className="type-display text-xl text-ink">Groupy</span>
-        <Link
-          href="/dashboard"
-          className="rounded-lg px-3 py-1.5 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-ink"
-        >
-          Ver un ejemplo
-        </Link>
+        <nav className="flex items-center gap-1">
+          <Link
+            href="/profesor"
+            className="rounded-lg px-3 py-1.5 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            Para profesores
+          </Link>
+          <Link
+            href="/dashboard"
+            className="rounded-lg px-3 py-1.5 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            Ver un ejemplo
+          </Link>
+        </nav>
       </header>
 
       <main className="flex flex-1 flex-col">

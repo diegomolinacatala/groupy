@@ -1,5 +1,5 @@
 // Hand-authored to mirror supabase/migrations (foundation + cloud slice +
-// task-flow columns + realtime sync).
+// task-flow columns + realtime sync + teacher templates).
 // Regenerate with `npx supabase gen types typescript --linked` once logged in
 // (`--db-url` gen requires a local Docker daemon, which this machine lacks).
 
@@ -216,6 +216,7 @@ export type Database = {
           description: string;
           join_code: string;
           status: Database["public"]["Enums"]["project_status"];
+          is_template: boolean;
           start_date: string | null;
           due_at: string | null;
           created_at: string;
@@ -228,6 +229,7 @@ export type Database = {
           description?: string;
           join_code?: string;
           status?: Database["public"]["Enums"]["project_status"];
+          is_template?: boolean;
           start_date?: string | null;
           due_at?: string | null;
           created_at?: string;
@@ -240,6 +242,7 @@ export type Database = {
           description?: string;
           join_code?: string;
           status?: Database["public"]["Enums"]["project_status"];
+          is_template?: boolean;
           start_date?: string | null;
           due_at?: string | null;
           created_at?: string;
@@ -249,7 +252,7 @@ export type Database = {
             foreignKeyName: "projects_template_id_fkey";
             columns: ["template_id"];
             isOneToOne: false;
-            referencedRelation: "templates";
+            referencedRelation: "projects";
             referencedColumns: ["id"];
           },
         ];
@@ -297,7 +300,6 @@ export type Database = {
         Row: {
           id: string;
           group_id: string;
-          template_item_id: string | null;
           title: string;
           description: string;
           type: Database["public"]["Enums"]["item_type"];
@@ -320,7 +322,6 @@ export type Database = {
         Insert: {
           id?: string;
           group_id: string;
-          template_item_id?: string | null;
           title: string;
           description?: string;
           type?: Database["public"]["Enums"]["item_type"];
@@ -343,7 +344,6 @@ export type Database = {
         Update: {
           id?: string;
           group_id?: string;
-          template_item_id?: string | null;
           title?: string;
           description?: string;
           type?: Database["public"]["Enums"]["item_type"];
@@ -372,13 +372,6 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "tasks_template_item_id_fkey";
-            columns: ["template_item_id"];
-            isOneToOne: false;
-            referencedRelation: "template_items";
-            referencedColumns: ["id"];
-          },
-          {
             foreignKeyName: "tasks_assignee_member_fkey";
             columns: ["assignee_member"];
             isOneToOne: false;
@@ -386,65 +379,6 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
-      };
-      template_items: {
-        Row: {
-          id: string;
-          template_id: string;
-          type: Database["public"]["Enums"]["item_type"];
-          title: string;
-          sort_order: number;
-        };
-        Insert: {
-          id?: string;
-          template_id: string;
-          type: Database["public"]["Enums"]["item_type"];
-          title: string;
-          sort_order?: number;
-        };
-        Update: {
-          id?: string;
-          template_id?: string;
-          type?: Database["public"]["Enums"]["item_type"];
-          title?: string;
-          sort_order?: number;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "template_items_template_id_fkey";
-            columns: ["template_id"];
-            isOneToOne: false;
-            referencedRelation: "templates";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      templates: {
-        Row: {
-          id: string;
-          teacher_id: string;
-          title: string;
-          objectives: string;
-          rubric: string;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          teacher_id: string;
-          title: string;
-          objectives?: string;
-          rubric?: string;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          teacher_id?: string;
-          title?: string;
-          objectives?: string;
-          rubric?: string;
-          created_at?: string;
-        };
-        Relationships: [];
       };
     };
     Views: {
@@ -455,12 +389,24 @@ export type Database = {
         Args: { p_member_id: string };
         Returns: Json;
       };
+      create_group_from_template: {
+        Args: { p_code: string; p_members: Json };
+        Returns: Json;
+      };
       create_project_with_group: {
         Args: { payload: Json };
         Returns: Json;
       };
+      create_template: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
       get_project_by_code: {
         Args: { p_code: string };
+        Returns: Json;
+      };
+      get_teacher_overview: {
+        Args: Record<PropertyKey, never>;
         Returns: Json;
       };
     };
