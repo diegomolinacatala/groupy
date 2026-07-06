@@ -10,7 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useDndMonitor, useDraggable } from "@dnd-kit/core";
-import { Check, Lock, LockOpen, X } from "lucide-react";
+import { Check, Key, Lock, X } from "lucide-react";
 import type { BlockFlow, ModuleFlow, ProjectFlow } from "@/lib/data/flow";
 import { wouldCreateCycle } from "@/lib/data/flow";
 import { useProject } from "@/lib/data/ProjectProvider";
@@ -1474,7 +1474,7 @@ function stateGlyph(entry: ModuleFlow, waitingColor: string | null) {
   return entry.state === "locked" ? (
     <Lock className="h-3.5 w-3.5 shrink-0 text-muted" style={style} />
   ) : (
-    <LockOpen className="h-3.5 w-3.5 shrink-0 text-muted" style={style} />
+    <Key className="h-3.5 w-3.5 shrink-0 text-muted" style={style} />
   );
 }
 

@@ -5,8 +5,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
   Check,
+  Key,
   Lock,
-  LockOpen,
   Plus,
   Trash2,
   UserPlus,
@@ -593,7 +593,7 @@ function TaskCard({
               strokeWidth={3}
             />
           ) : (
-            <LockOpen className="mt-1 h-[18px] w-[18px] shrink-0 text-muted" />
+            <Key className="mt-1 h-[18px] w-[18px] shrink-0 text-muted" />
           ))}
       </div>
 

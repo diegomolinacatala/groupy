@@ -20,8 +20,8 @@ import {
   ArrowRight,
   Check,
   Columns3,
+  Key,
   Lock,
-  LockOpen,
   Map as MapIcon,
 } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
@@ -556,7 +556,7 @@ function TaskRowBody({
         overlay ? "shadow-pop" : "shadow-card hover:border-line-strong",
       )}
     >
-      <LockOpen className="h-3.5 w-3.5 shrink-0 text-muted" />
+      <Key className="h-3.5 w-3.5 shrink-0 text-muted" />
       <DocTypeBadge docType={module.docType} />
       <span className="min-w-0 flex-1 truncate font-medium text-ink">
         {module.title || "Sin título"}
