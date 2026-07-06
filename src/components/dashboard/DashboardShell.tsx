@@ -11,6 +11,7 @@ import { MapView } from "@/components/map/MapView";
 import { CalendarView } from "@/components/calendar/CalendarView";
 import { BoardView } from "@/components/board/BoardView";
 import { TeamView } from "@/components/team/TeamView";
+import { ReportView } from "@/components/report/ReportView";
 import { TaskModal } from "@/components/module/TaskModal";
 
 export function DashboardShell() {
@@ -20,17 +21,20 @@ export function DashboardShell() {
   if (!isReady || !viewReady) return <LoadingScreen />;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-canvas">
+    // data-print-flat: printing the Informe needs the fixed-height scroll
+    // shell flattened into normal document flow (see globals.css).
+    <div data-print-flat className="flex h-screen overflow-hidden bg-canvas">
       <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div data-print-flat className="flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        <main data-print-flat className="min-h-0 flex-1 overflow-y-auto">
           {view === "personal" && <PersonalView />}
           {view === "organization" && <OrganizationView />}
           {view === "map" && <MapView />}
           {view === "calendar" && <CalendarView />}
           {view === "board" && <BoardView />}
           {view === "team" && <TeamView />}
+          {view === "report" && <ReportView />}
         </main>
       </div>
       <TaskModal />

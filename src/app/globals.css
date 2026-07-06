@@ -370,6 +370,49 @@
   animation: groupy-air-win 360ms var(--ease-spring) both;
 }
 
+/* ── Informe (print) ────────────────────────────────────────────────────── */
+/* The report prints as a clean A4 document: app chrome disappears
+   (data-print-hide), the fixed-height scroll shell flattens into normal
+   document flow (data-print-flat), and the document sheds its screen card
+   styling. Colours are kept exact so member tints and bars survive PDF. */
+
+.report-document {
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  [data-print-flat] {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  .report-document {
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-rise,
   .animate-rise-delayed,

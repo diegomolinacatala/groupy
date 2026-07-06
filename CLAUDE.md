@@ -212,6 +212,31 @@ project-level list. Engine: `src/lib/data/flow.ts` (pure), two SEPARATE lock mec
   `dispatchEvent` in this stack — drive real interactions (preview_fill/click) when
   testing, or you'll chase phantom "sync" bugs.
 
+### Informe para el profesor — shipped 2026-07-05
+
+- New dashboard tab **Informe** (sidebar group "Entrega", `view: "report"`), same
+  component in local AND cloud mode — it reads the `Project` from context, so it needs
+  no route or server work. It is the student-generated snapshot version of the final
+  report (the "companion artifact"): formal, addressed to the teacher, downloadable.
+- **Pure engine** `src/lib/data/report.ts` (`buildReport(project)`, same pattern as
+  `flow.ts`): importance-WEIGHTED progress (a shared task splits its weight evenly among
+  assignees), pace vs plazo (delta of weighted % vs time consumed → verdict), per-member
+  contribution/load shares + checklist counts + "frena a X" (their pending tasks others
+  wait on) + top completed tasks, weighted per-block progress, risks (overdue / blocked
+  with reason / unassigned weight share), and an auto-written Spanish executive summary.
+- **UI** `src/components/report/` (`ReportView` + `ReportSections` + `primitives`):
+  document layout — cover with meta grid, resumen (4 big stats + trabajo-vs-plazo double
+  bar + prose), 100%-stacked contribution bar (grey segment for done-without-assignee),
+  member cards (color left edge, 46% "del trabajo hecho"), bloques, puntos de atención,
+  anexo (full task table: doc type, lock, responsables, weight dash, fecha, estado),
+  nota metodológica.
+- **Download = print-to-PDF**, zero deps: `window.print()` with `document.title`
+  swapped for the PDF filename. Print CSS in `globals.css`: `[data-print-hide]`
+  (Sidebar / Topbar / report toolbar), `[data-print-flat]` (flattens the `h-screen
+  overflow-hidden` shell in DashboardShell so the document flows across pages),
+  `.report-document` sheds card chrome + `print-color-adjust: exact`, `@page A4 14mm`,
+  `break-inside-avoid` on cards/rows.
+
 ## Scope
 
 **In (v1):**

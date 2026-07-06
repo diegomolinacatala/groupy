@@ -22,7 +22,10 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-surface md:flex">
+    <aside
+      data-print-hide
+      className="hidden w-60 shrink-0 flex-col border-r border-line bg-surface md:flex"
+    >
       <div className="px-6 pb-1 pt-6">
         <Link href="/" className="type-display text-xl text-ink">
           Groupy

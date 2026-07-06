@@ -52,7 +52,10 @@ export function Topbar() {
   };
 
   return (
-    <header className="shrink-0 border-b border-line bg-surface/80 backdrop-blur">
+    <header
+      data-print-hide
+      className="shrink-0 border-b border-line bg-surface/80 backdrop-blur"
+    >
       {/* Mobile view switcher (sidebar is hidden below md) */}
       <div className="flex gap-1 overflow-x-auto border-b border-line px-3 py-2 md:hidden">
         {NAV_ITEMS.map((item) => (

@@ -1,6 +1,7 @@
 import {
   CalendarDays,
   Columns3,
+  FileText,
   Home,
   SquareKanban,
   Users,
@@ -39,6 +40,10 @@ export const NAV_GROUPS: NavGroup[] = [
       { view: "board", label: "Tablero", icon: SquareKanban },
       { view: "team", label: "Equipo", icon: Users },
     ],
+  },
+  {
+    title: "Entrega",
+    items: [{ view: "report", label: "Informe", icon: FileText }],
   },
 ];
 

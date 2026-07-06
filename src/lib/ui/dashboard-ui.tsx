@@ -15,7 +15,8 @@ export type DashboardView =
   | "map"
   | "calendar"
   | "board"
-  | "team";
+  | "team"
+  | "report";
 
 const VIEWS: readonly string[] = [
   "personal",
@@ -24,6 +25,7 @@ const VIEWS: readonly string[] = [
   "calendar",
   "board",
   "team",
+  "report",
 ];
 
 // --- Per-project tab memory --------------------------------------------------
