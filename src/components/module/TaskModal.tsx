@@ -46,10 +46,14 @@ import { cn } from "@/lib/utils/cn";
 // to its left, what it BLOCKS to its right (click a chip to travel the
 // graph), and the remaining options live below.
 
-const STATUS_OPTIONS: { value: ModuleStatus; label: string }[] = [
+const STATUS_OPTIONS: {
+  value: ModuleStatus;
+  label: string;
+  activeClassName?: string;
+}[] = [
   { value: "todo", label: "Pendiente" },
-  { value: "in_progress", label: "En curso" },
-  { value: "done", label: "Hecha" },
+  { value: "in_progress", label: "En curso", activeClassName: "text-progress" },
+  { value: "done", label: "Hecha", activeClassName: "text-done" },
 ];
 
 const pickerChip = (active: boolean) =>
@@ -192,7 +196,11 @@ export function TaskModal() {
                   stage but stays compact — the columns breathe around it. */}
               <div className="grid gap-x-5 gap-y-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] md:items-center">
                 <div className="order-first md:order-none md:col-start-2">
-                  <TaskCard project={project} module={activeModule} />
+                  <TaskCard
+                    project={project}
+                    module={activeModule}
+                    locked={isLocked}
+                  />
                 </div>
 
                 <div className="md:col-start-1 md:row-start-1">
@@ -253,26 +261,6 @@ export function TaskModal() {
               <div className="mt-7 border-t border-line pt-6">
                 <div className="grid items-stretch gap-6 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] md:gap-8">
                   <div className="grid content-start gap-x-6 gap-y-4 sm:grid-cols-2">
-                  <Field label="Estado">
-                    <Segmented
-                      options={STATUS_OPTIONS.map((option) => ({
-                        ...option,
-                        // The padlock: a locked task can't move forward until
-                        // its prerequisites are done (going back is fine).
-                        disabled:
-                          isLocked &&
-                          option.value !== "todo" &&
-                          option.value !== activeModule.status,
-                        disabledReason: "Bloqueada",
-                      }))}
-                      value={activeModule.status}
-                      onChange={(status) =>
-                        updateModule(activeModule.id, { status })
-                      }
-                      size="sm"
-                    />
-                  </Field>
-
                   <Field label="Fecha">
                     <DateField
                       value={activeModule.dueDate}
@@ -553,9 +541,11 @@ export function TaskModal() {
 function TaskCard({
   project,
   module,
+  locked,
 }: {
   project: Project;
   module: ProjectModule;
+  locked: boolean;
 }) {
   const { updateModule } = useProject();
   const scale = importanceScale(module.importance);
@@ -616,6 +606,26 @@ function TaskCard({
             <AvatarStack members={assignees} size="xs" />
           </span>
         )}
+      </div>
+
+      {/* The status, right where you look when you open a task. */}
+      <div className="mt-4 border-t border-line/70 pt-3">
+        <Segmented
+          size="sm"
+          stretch
+          options={STATUS_OPTIONS.map((option) => ({
+            ...option,
+            // The padlock: a locked task can't move forward until its
+            // prerequisites are done (going back is fine).
+            disabled:
+              locked &&
+              option.value !== "todo" &&
+              option.value !== module.status,
+            disabledReason: "Bloqueada",
+          }))}
+          value={module.status}
+          onChange={(status) => updateModule(module.id, { status })}
+        />
       </div>
     </div>
   );
