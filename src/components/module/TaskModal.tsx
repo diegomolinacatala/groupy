@@ -570,7 +570,10 @@ function TaskCard({
         borderLeftColor: ownerColor?.bg ?? "var(--color-line-strong)",
         backgroundColor: ownerColor ? ownerColor.bg + "0F" : undefined,
       }}
-      className="mx-auto rounded-2xl border border-line border-l-[5px] bg-surface p-4 shadow-pop md:p-5"
+      // min-w-fit: importance drives the width DOWN only until the fixed
+      // content (the estado segmented) still fits — never past it, so a
+      // small task can't push «Hecha» out of its own card.
+      className="mx-auto min-w-fit rounded-2xl border border-line border-l-[5px] bg-surface p-4 shadow-pop md:p-5"
     >
       <div className="flex items-start gap-2.5">
         <DocTypeBadge docType={module.docType} className="mt-1" />
@@ -745,7 +748,7 @@ function FlowColumn({
                     }}
                     className="flex max-w-full items-center rounded-lg border border-line bg-surface text-left shadow-card transition-[rotate,border-color] hover:rotate-0 hover:border-line-strong"
                   >
-                    <DocTypeBadge docType={candidate.docType} />
+                    <DocTypeBadge docType={candidate.docType} scale={scale} />
                     <span
                       className={cn(
                         "min-w-0 font-medium leading-snug break-words",
@@ -799,7 +802,7 @@ function FlowChip({
       ) : (
         <Check className="h-3.5 w-3.5 shrink-0 text-done" />
       )}
-      <DocTypeBadge docType={module.docType} />
+      <DocTypeBadge docType={module.docType} scale={scale} />
       <button
         type="button"
         onClick={onNavigate}

@@ -58,7 +58,7 @@ function ChipInner({
       )}
       style={style}
     >
-      <DocTypeBadge docType={module.docType} />
+      <DocTypeBadge docType={module.docType} scale={scale} />
       <span
         className={cn(
           "min-w-0 font-medium break-words",

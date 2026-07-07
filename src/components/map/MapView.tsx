@@ -270,7 +270,11 @@ export function MapView() {
           in-place spring "settle" instead — see Corkboard's justDropped. */}
       <DragOverlay dropAnimation={null}>
         {activeTask && !gameActive ? (
-          <CorkNodeStatic project={project} module={activeTask} />
+          <CorkNodeStatic
+            project={project}
+            module={activeTask}
+            entry={flow.byId.get(activeTask.id)}
+          />
         ) : null}
       </DragOverlay>
     </DndContext>

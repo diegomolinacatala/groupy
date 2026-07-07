@@ -47,7 +47,8 @@ const NODE_BASE_WIDTH = 172;
 /** Text-hugging card width bounds, before the importance scale. */
 const NODE_MIN_WIDTH = 84;
 const NODE_MAX_WIDTH = 200;
-const EST_NODE_H = 60;
+/** Arrowheads stop this short of a card — they touch it, never stab it. */
+const EDGE_STANDOFF = 2;
 /** Cursor-to-node distance at which a connection snaps on. */
 const SNAP_RADIUS = 56;
 
@@ -112,17 +113,46 @@ export interface CorkboardProps {
   onGameActiveChange?: (active: boolean) => void;
 }
 
-export function nodeWidth(module: ProjectModule): number {
+/** The fields a node estimate needs — a draft-to-be can pass a literal. */
+type NodeSizing = Pick<ProjectModule, "title" | "importance" | "docType">;
+
+/** Un-scaled hug width: text at ~6.6px/char plus the chrome around it
+ *  (padding 20 + gap 6 + state glyph 14 + borders 4; a doc badge adds ~30).
+ *  Slightly generous on purpose — see nodeWidth. */
+function hugWidth(module: NodeSizing): number {
   const title = module.title || "Sin título";
-  // Hug the title: ~6.4px/char at the 12px base size plus the chrome around
-  // it (padding, state glyph, optional type badge). Long titles cap at
-  // NODE_MAX_WIDTH and wrap onto the second line (line-clamp-2).
-  const chrome = 42 + (module.docType ? 30 : 0);
-  const hug = Math.min(
-    Math.max(chrome + title.length * 6.4, NODE_MIN_WIDTH),
+  const chrome = 44 + (module.docType ? 30 : 0);
+  return Math.min(
+    Math.max(chrome + title.length * 6.6, NODE_MIN_WIDTH),
     NODE_MAX_WIDTH,
   );
-  return Math.round(hug * importanceScale(module.importance));
+}
+
+/**
+ * Geometry ESTIMATE of a node's width. The card itself hugs its content via
+ * CSS (max-content, capped between the scaled bounds) so rendering never
+ * clips a title; this estimate only drives the fraction↔px mapping, board
+ * clamping and the auto layout. Biased a hair wide so a clamped card stays
+ * fully on-board even when the estimate misses.
+ */
+export function nodeWidth(module: NodeSizing): number {
+  return Math.round(hugWidth(module) * importanceScale(module.importance));
+}
+
+/**
+ * Geometry ESTIMATE of a node's height: borders + vertical padding + one or
+ * two snug title lines (the line-clamp-2 cap decides), everything but the
+ * borders riding the importance scale. External-dep chips add a fixed row.
+ */
+export function nodeEstHeight(
+  module: NodeSizing,
+  hasExternalDeps = false,
+): number {
+  const title = module.title || "Sin título";
+  const chrome = 44 + (module.docType ? 30 : 0);
+  const lines = chrome + title.length * 6.6 > NODE_MAX_WIDTH ? 2 : 1;
+  const scaled = (16 + 17 * lines) * importanceScale(module.importance);
+  return Math.round(2 + scaled + (hasExternalDeps ? 24 : 0));
 }
 
 /** Shortest distance from a point to a rect's border (0 inside). */
@@ -323,11 +353,16 @@ function resolvePositions(
   board: { w: number; h: number },
 ): Map<string, Point> {
   const positions = new Map<string, Point>();
+  const inBlock = new Set(modules.map((m) => m.id));
 
   const place = (mod: ProjectModule, fx: number, fy: number) => {
     const w = nodeWidth(mod);
+    const h = nodeEstHeight(
+      mod,
+      mod.dependsOn.some((id) => !inBlock.has(id)),
+    );
     const usableW = Math.max(board.w - w - PAD * 2, 0);
-    const usableH = Math.max(board.h - EST_NODE_H - PAD * 2, 0);
+    const usableH = Math.max(board.h - h - PAD * 2, 0);
     positions.set(mod.id, {
       x: PAD + Math.min(1, Math.max(0, fx)) * usableW,
       y: PAD + Math.min(1, Math.max(0, fy)) * usableH,
@@ -448,6 +483,12 @@ export function Corkboard({
   const inBlock = new Set(modules.map((m) => m.id));
   const isGhost = (mod: ProjectModule) =>
     ghostMemberId !== null && !mod.assigneeIds.includes(ghostMemberId);
+  /** Same estimate as resolvePositions — fraction math must stay symmetric. */
+  const estHeight = (mod: ProjectModule) =>
+    nodeEstHeight(
+      mod,
+      mod.dependsOn.some((id) => !inBlock.has(id)),
+    );
 
   const positions = boardSize
     ? resolvePositions(modules, boardSize)
@@ -469,7 +510,7 @@ export function Corkboard({
   const ghostPoint = (mod: ProjectModule, fx: number, fy: number): Point => {
     const w = nodeWidth(mod);
     const usableW = Math.max((boardSize?.w ?? 0) - w - PAD * 2, 0);
-    const usableH = Math.max((boardSize?.h ?? 0) - EST_NODE_H - PAD * 2, 0);
+    const usableH = Math.max((boardSize?.h ?? 0) - estHeight(mod) - PAD * 2, 0);
     return {
       x: PAD + clamp01(fx) * usableW,
       y: PAD + clamp01(fy) * usableH,
@@ -536,7 +577,7 @@ export function Corkboard({
     if (!mod || !pos) return;
     const w = nodeWidth(mod);
     const usableW = Math.max(boardSize.w - w - PAD * 2, 1);
-    const usableH = Math.max(boardSize.h - EST_NODE_H - PAD * 2, 1);
+    const usableH = Math.max(boardSize.h - estHeight(mod) - PAD * 2, 1);
     room.sendDrag({
       taskId: liftedId,
       blockId,
@@ -569,12 +610,14 @@ export function Corkboard({
     return () => observer.disconnect();
   }, []);
 
-  // Re-measure node rects whenever anything that moves them changes.
+  // Re-measure node rects whenever anything that moves OR resizes them
+  // changes. The full title (not its length: cards hug their text, so equal
+  // lengths can still measure differently) and the doc badge are size inputs.
   const layoutKey = [
     boardSize ? `${boardSize.w}x${boardSize.h}` : "0",
     ...modules.map(
       (m) =>
-        `${m.id}:${m.mapX}:${m.mapY}:${m.importance}:${m.dependsOn.join(",")}:${m.title.length}`,
+        `${m.id}:${m.mapX}:${m.mapY}:${m.importance}:${m.dependsOn.join(",")}:${m.docType}:${m.title}`,
     ),
   ].join("|");
 
@@ -720,8 +763,8 @@ export function Corkboard({
       updateDots({
         x: traveling.point.x,
         y: traveling.point.y,
-        w: nodeWidth(traveling.mod),
-        h: rects.get(traveling.mod.id)?.h ?? EST_NODE_H,
+        w: rects.get(traveling.mod.id)?.w ?? nodeWidth(traveling.mod),
+        h: rects.get(traveling.mod.id)?.h ?? estHeight(traveling.mod),
       });
     } else if (remoteFieldWasActive.current) {
       remoteFieldWasActive.current = false;
@@ -808,7 +851,7 @@ export function Corkboard({
       if (!mod || !pos) return;
       const w = nodeWidth(mod);
       const usableW = Math.max(boardSize.w - w - PAD * 2, 1);
-      const usableH = Math.max(boardSize.h - EST_NODE_H - PAD * 2, 1);
+      const usableH = Math.max(boardSize.h - estHeight(mod) - PAD * 2, 1);
       const fx = (pos.x + event.delta.x - PAD) / usableW;
       const fy = (pos.y + event.delta.y - PAD) / usableH;
       onSetPosition(id, Math.min(1, Math.max(0, fx)), Math.min(1, Math.max(0, fy)));
@@ -887,8 +930,11 @@ export function Corkboard({
     setDraft(null);
     setDraftValue("");
     if (!point || !boardSize || !title) return;
-    const usableW = Math.max(boardSize.w - draftNodeW - PAD * 2, 1);
-    const usableH = Math.max(boardSize.h - EST_NODE_H - PAD * 2, 1);
+    // Invert place() for the task ABOUT to exist (default importance, no
+    // type, no deps) so it pins exactly where the draft box was typed.
+    const sizing = { title, importance: IMPORTANCE_DEFAULT, docType: null };
+    const usableW = Math.max(boardSize.w - nodeWidth(sizing) - PAD * 2, 1);
+    const usableH = Math.max(boardSize.h - nodeEstHeight(sizing) - PAD * 2, 1);
     const fx = Math.min(1, Math.max(0, (point.x - PAD) / usableW));
     const fy = Math.min(1, Math.max(0, (point.y - PAD) / usableH));
     onAddTaskAt(title, fx, fy);
@@ -1027,7 +1073,12 @@ export function Corkboard({
     const s = rectFor(edge.sourceId);
     const t = rectFor(edge.targetId);
     if (!s || !t) return null;
-    return curve(s.x + s.w, s.y + s.h / 2, t.x, t.y + t.h / 2);
+    return curve(
+      s.x + s.w + EDGE_STANDOFF,
+      s.y + s.h / 2,
+      t.x - EDGE_STANDOFF,
+      t.y + t.h / 2,
+    );
   };
 
   const edgeMidpoint = (edge: Edge) => {
@@ -1047,18 +1098,18 @@ export function Corkboard({
     const snap = portDrag.snapId ? rectFor(portDrag.snapId) : null;
     if (portDrag.direction === "out") {
       const end: Point = snap
-        ? { x: snap.x, y: snap.y + snap.h / 2 }
+        ? { x: snap.x - EDGE_STANDOFF, y: snap.y + snap.h / 2 }
         : { x: portDrag.x, y: portDrag.y };
       return {
-        d: curve(s.x + s.w, s.y + s.h / 2, end.x, end.y),
+        d: curve(s.x + s.w + EDGE_STANDOFF, s.y + s.h / 2, end.x, end.y),
         tip: end,
       };
     }
     const start: Point = snap
-      ? { x: snap.x + snap.w, y: snap.y + snap.h / 2 }
+      ? { x: snap.x + snap.w + EDGE_STANDOFF, y: snap.y + snap.h / 2 }
       : { x: portDrag.x, y: portDrag.y };
     return {
-      d: curve(start.x, start.y, s.x, s.y + s.h / 2),
+      d: curve(start.x, start.y, s.x - EDGE_STANDOFF, s.y + s.h / 2),
       tip: start,
     };
   })();
@@ -1397,7 +1448,12 @@ export function Corkboard({
                   : undefined
               }
             >
-              <CorkNodeStatic project={project} module={mod} lifted={moving} />
+              <CorkNodeStatic
+                project={project}
+                module={mod}
+                entry={flow.byId.get(mod.id)}
+                lifted={moving}
+              />
             </div>
           </div>
         );
@@ -1466,15 +1522,24 @@ function firstNameOf(name: string): string {
   return name.trim().split(/\s+/)[0] || name;
 }
 
-function stateGlyph(entry: ModuleFlow, waitingColor: string | null) {
+function stateGlyph(
+  entry: ModuleFlow,
+  waitingColor: string | null,
+  scale = 1,
+) {
+  // The glyph rides the node's importance scale (softly clamped: it must
+  // stay readable on the smallest cards, not shout on the biggest) instead
+  // of sitting at a fixed 14px that dwarfs a small card's text.
+  const size = 14 * Math.min(Math.max(scale, 0.8), 1.5);
+  const box = { width: size, height: size };
   if (entry.state === "done") {
-    return <Check className="h-3.5 w-3.5 shrink-0 text-done" strokeWidth={3} />;
+    return <Check className="shrink-0 text-done" strokeWidth={3} style={box} />;
   }
-  const style = waitingColor ? { color: waitingColor } : undefined;
+  const style = waitingColor ? { ...box, color: waitingColor } : box;
   return entry.state === "locked" ? (
-    <Lock className="h-3.5 w-3.5 shrink-0 text-muted" style={style} />
+    <Lock className="shrink-0 text-muted" style={style} />
   ) : (
-    <Key className="h-3.5 w-3.5 shrink-0 text-muted" style={style} />
+    <Key className="shrink-0 text-muted" style={style} />
   );
 }
 
@@ -1569,7 +1634,12 @@ function CorkNode({
       style={{
         left: position.x,
         top: position.y,
-        width: nodeWidth(mod),
+        // The card HUGS its content (nodeWidth is only the geometry
+        // estimate): the browser measures the real title, so no size of
+        // text, glyph or badge can ever clip inside the box.
+        width: "max-content",
+        minWidth: Math.round(NODE_MIN_WIDTH * scale),
+        maxWidth: Math.round(NODE_MAX_WIDTH * scale),
         borderLeftColor: ownerColor?.bg ?? "var(--color-line-strong)",
         // Owner tint painted OVER the opaque surface — the card must never
         // be see-through (dots pass UNDER tasks, not through them).
@@ -1611,16 +1681,18 @@ function CorkNode({
         />
       )}
       <span className="flex items-center" style={{ gap: 6 * scale }}>
-        <DocTypeBadge docType={mod.docType} />
+        <DocTypeBadge docType={mod.docType} scale={scale} />
         <span
           className={cn(
             "min-w-0 flex-1 font-medium leading-snug",
             mod.status === "done" ? "text-muted line-through" : "text-ink",
           )}
         >
-          <span className="line-clamp-2">{mod.title || "Sin título"}</span>
+          <span className="line-clamp-2 break-words">
+            {mod.title || "Sin título"}
+          </span>
         </span>
-        {stateGlyph(entry, waitingColor)}
+        {stateGlyph(entry, waitingColor, scale)}
       </span>
 
       {externalDeps.length > 0 && (
@@ -1702,10 +1774,14 @@ function CorkNode({
 export function CorkNodeStatic({
   project,
   module,
+  entry,
   lifted = true,
 }: {
   project: Project;
   module: ProjectModule;
+  /** Flow entry, when the caller has it: draws the same state glyph as the
+   *  real node so the traveling card measures pixel-for-pixel like it. */
+  entry?: ModuleFlow;
   /** The pick-up "lift" animation. Off for a settled (dropped) ghost so it
    *  reads as the task at rest, not a card mid-flight. */
   lifted?: boolean;
@@ -1716,7 +1792,11 @@ export function CorkNodeStatic({
   return (
     <div
       style={{
-        width: nodeWidth(module),
+        // Same hug sizing as CorkNode — the overlay must never change width
+        // the instant a card is picked up.
+        width: "max-content",
+        minWidth: Math.round(NODE_MIN_WIDTH * scale),
+        maxWidth: Math.round(NODE_MAX_WIDTH * scale),
         borderLeftColor: ownerColor?.bg ?? "var(--color-line-strong)",
         // Same opaque tint as CorkNode — the traveling card covers the dots.
         backgroundImage: ownerColor
@@ -1731,10 +1811,18 @@ export function CorkNodeStatic({
       )}
     >
       <span className="flex items-center" style={{ gap: 6 * scale }}>
-        <DocTypeBadge docType={module.docType} />
-        <span className="min-w-0 flex-1 font-medium leading-snug text-ink">
-          <span className="line-clamp-2">{module.title || "Sin título"}</span>
+        <DocTypeBadge docType={module.docType} scale={scale} />
+        <span
+          className={cn(
+            "min-w-0 flex-1 font-medium leading-snug",
+            module.status === "done" ? "text-muted line-through" : "text-ink",
+          )}
+        >
+          <span className="line-clamp-2 break-words">
+            {module.title || "Sin título"}
+          </span>
         </span>
+        {entry && stateGlyph(entry, null, scale)}
       </span>
     </div>
   );
