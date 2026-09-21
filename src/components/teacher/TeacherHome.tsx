@@ -21,6 +21,7 @@ import { IconButton } from "@/components/ui/IconButton";
 import { colorForKey, initialsFromName } from "@/lib/utils/colors";
 import { formatShort } from "@/lib/utils/dates";
 import { cn } from "@/lib/utils/cn";
+import { callCloud } from "@/lib/data/cloud/call";
 
 // The teacher's home: their templates, each with its CLASS code and the
 // groups spawned from it. Deliberately roster-only — who is in each group and
@@ -44,7 +45,7 @@ export function TeacherHome({
     if (creating) return;
     setCreating(true);
     setError(null);
-    const result = await createTeacherTemplate();
+    const result = await callCloud(() => createTeacherTemplate());
     if (!result.ok) {
       setError(result.error);
       setCreating(false);

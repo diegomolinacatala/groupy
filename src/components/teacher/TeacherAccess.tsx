@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, MailCheck } from "lucide-react";
 import { signInTeacher, signUpTeacher } from "@/lib/auth/teacher-actions";
 import { Segmented } from "@/components/ui/Segmented";
+import { callCloud } from "@/lib/data/cloud/call";
 
 // Entry gate for the teacher role: email + password (locked decision). The
 // students' world stays account-free — this screen exists ONLY for whoever
@@ -34,8 +35,8 @@ export function TeacherAccess() {
     const credentials = { email: email.trim(), password };
     const result =
       mode === "signin"
-        ? await signInTeacher(credentials)
-        : await signUpTeacher(credentials);
+        ? await callCloud(() => signInTeacher(credentials))
+        : await callCloud(() => signUpTeacher(credentials));
 
     if (!result.ok) {
       setError(result.error);

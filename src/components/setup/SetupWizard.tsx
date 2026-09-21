@@ -15,6 +15,7 @@ import { projectToCreateInput } from "@/lib/data/cloud/mapping";
 import { saveLastCloudProject } from "@/lib/data/cloud/recent";
 import { addMonthsISO, todayISO } from "@/lib/utils/dates";
 import { StepDates, StepTasks, StepTeam, StepWho } from "./steps";
+import { callCloud } from "@/lib/data/cloud/call";
 
 // One question per screen, Talli-style: thin progress bar, big serif
 // question, a single input, Enter to continue. Straight to the point: no
@@ -88,7 +89,9 @@ export function SetupWizard() {
     const project = buildProjectPlan(answers);
     const memberId = chosenMemberId(answers, project);
 
-    const created = await createCloudProject(projectToCreateInput(project));
+    const created = await callCloud(() =>
+      createCloudProject(projectToCreateInput(project)),
+    );
     if (!created.ok) {
       setSaveError(created.error);
       setSaving(false);
@@ -98,7 +101,7 @@ export function SetupWizard() {
     // Claim is best-effort: if it fails, the who-are-you screen picks the
     // identity up on landing instead.
     if (memberId) {
-      await claimCloudMember({ memberId });
+      await callCloud(() => claimCloudMember({ memberId }));
     }
     await sleep(Math.max(0, MIN_SAVING_MS - (Date.now() - startedAt)));
     // Keep the loading screen up while the dashboard route loads.

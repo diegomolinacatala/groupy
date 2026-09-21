@@ -19,6 +19,7 @@ import {
 } from "@/lib/utils/colors";
 import { formatShort } from "@/lib/utils/dates";
 import { cn } from "@/lib/utils/cn";
+import { callCloud } from "@/lib/data/cloud/call";
 
 // What a CLASS code opens: the assignment the teacher prepared, the groups
 // that already exist (tap yours → who-are-you) and "crear grupo" — a two-beat
@@ -56,10 +57,12 @@ async function spawnGroup(
   for (let i = 0; i < names.length; i++) {
     colorKeys.push(nextMemberColorKey(colorKeys));
   }
-  const created = await createGroupFromTemplate({
-    code: template.join_code,
-    members: names.map((name, i) => ({ name, colorKey: colorKeys[i] })),
-  });
+  const created = await callCloud(() =>
+    createGroupFromTemplate({
+      code: template.join_code,
+      members: names.map((name, i) => ({ name, colorKey: colorKeys[i] })),
+    }),
+  );
   if (!created.ok) return created;
 
   saveLastCloudProject({ code: created.joinCode, title: template.title });
@@ -67,7 +70,7 @@ async function spawnGroup(
   // identity up on landing instead.
   const mine = created.members[selfIndex];
   if (mine) {
-    await claimCloudMember({ memberId: mine.id });
+    await callCloud(() => claimCloudMember({ memberId: mine.id }));
   }
   await sleep(Math.max(0, MIN_SAVING_MS - (Date.now() - startedAt)));
   return { ok: true, joinCode: created.joinCode };

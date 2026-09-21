@@ -1,6 +1,8 @@
 "use server";
 
+import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { CLOUD_UNREACHABLE } from "./call";
 import type { Json, TablesUpdate } from "@/lib/supabase/database.types";
 import {
   claimInputSchema,
@@ -27,6 +29,8 @@ import { blockToTaskRow, moduleToTaskRow, toRpcPayload } from "./mapping";
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 const INVALID_INPUT = { ok: false as const, error: "Datos no válidos." };
+const NO_ANON_SESSION =
+  "No se pudo crear la sesión anónima. ¿Está activado «Anonymous sign-ins» en Supabase?";
 const NO_SESSION = {
   ok: false as const,
   error: "No hay sesión en este dispositivo.",
@@ -36,14 +40,21 @@ const NO_SESSION = {
  * First write from a device mints its anonymous session (cookie set is legal
  * inside a Server Function). Everything RLS does afterwards keys on this uid.
  */
-async function ensureUser(supabase: Supabase) {
+async function ensureUser(
+  supabase: Supabase,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (user) return user;
+  if (user) return { ok: true };
   const { data, error } = await supabase.auth.signInAnonymously();
-  if (error) return null;
-  return data.user;
+  if (error || !data.user) {
+    // status 0 / retryable = the request never reached Supabase (paused
+    // project, DNS, network) — not a configuration problem.
+    const unreachable = !error || isAuthRetryableFetchError(error);
+    return { ok: false, error: unreachable ? CLOUD_UNREACHABLE : NO_ANON_SESSION };
+  }
+  return { ok: true };
 }
 
 export async function createCloudProject(
@@ -56,14 +67,8 @@ export async function createCloudProject(
   if (!parsed.success) return INVALID_INPUT;
 
   const supabase = await createClient();
-  const user = await ensureUser(supabase);
-  if (!user) {
-    return {
-      ok: false,
-      error:
-        "No se pudo crear la sesión anónima. ¿Está activado «Anonymous sign-ins» en Supabase?",
-    };
-  }
+  const session = await ensureUser(supabase);
+  if (!session.ok) return session;
 
   const { data, error } = await supabase.rpc("create_project_with_group", {
     payload: toRpcPayload(parsed.data),
@@ -88,14 +93,8 @@ export async function claimCloudMember(
   if (!parsed.success) return INVALID_INPUT;
 
   const supabase = await createClient();
-  const user = await ensureUser(supabase);
-  if (!user) {
-    return {
-      ok: false,
-      error:
-        "No se pudo crear la sesión anónima. ¿Está activado «Anonymous sign-ins» en Supabase?",
-    };
-  }
+  const session = await ensureUser(supabase);
+  if (!session.ok) return session;
 
   const { data, error } = await supabase.rpc("claim_member", {
     p_member_id: parsed.data.memberId,
@@ -144,14 +143,8 @@ export async function createGroupFromTemplate(
   if (!parsed.success) return INVALID_INPUT;
 
   const supabase = await createClient();
-  const user = await ensureUser(supabase);
-  if (!user) {
-    return {
-      ok: false,
-      error:
-        "No se pudo crear la sesión anónima. ¿Está activado «Anonymous sign-ins» en Supabase?",
-    };
-  }
+  const session = await ensureUser(supabase);
+  if (!session.ok) return session;
 
   const { data, error } = await supabase.rpc("create_group_from_template", {
     p_code: parsed.data.code,

@@ -8,6 +8,7 @@ import { saveLastCloudProject } from "@/lib/data/cloud/recent";
 import type { ProjectPreview } from "@/lib/data/cloud/schemas";
 import { colorForKey, initialsFromName } from "@/lib/utils/colors";
 import { cn } from "@/lib/utils/cn";
+import { callCloud } from "@/lib/data/cloud/call";
 
 // Entry gate for a shared project: the visitor taps which declared member
 // they are — that single click claims the row (binding their anonymous
@@ -41,7 +42,7 @@ export function WhoAreYouScreen({ preview }: { preview: ProjectPreview }) {
     if (pendingId || enteringName) return;
     setPendingId(memberId);
     setError(null);
-    const result = await claimCloudMember({ memberId });
+    const result = await callCloud(() => claimCloudMember({ memberId }));
     if (!result.ok) {
       setError(result.error);
       setPendingId(null);
