@@ -1111,20 +1111,26 @@ export function Corkboard({
 
   // Dated tasks get a vertical guide at their center — bottom of the board up
   // to a name + date label at the top. rectFor keeps it glued during drags.
-  const dueMarkers = modules.flatMap((mod) => {
-    if (!mod.dueDate) return [];
-    const rect = rectFor(mod.id);
-    if (!rect) return [];
-    return [
-      {
-        id: mod.id,
-        x: rect.x + rect.w / 2,
-        title: mod.title || "Sin título",
-        // "12 mar 2026" → "12 mar": the year is noise on the board.
-        date: formatShort(mod.dueDate).replace(/ \d{4}$/, ""),
-      },
-    ];
-  });
+  // Labels whose guides sit close together stagger into lanes (one row
+  // down each) instead of printing on top of each other — narrow phone
+  // boards made that the norm.
+  const dueMarkers = layoutDueLabels(
+    modules.flatMap((mod) => {
+      if (!mod.dueDate) return [];
+      const rect = rectFor(mod.id);
+      if (!rect) return [];
+      return [
+        {
+          id: mod.id,
+          x: rect.x + rect.w / 2,
+          title: mod.title || "Sin título",
+          // "12 mar 2026" → "12 mar": the year is noise on the board.
+          date: formatShort(mod.dueDate).replace(/ \d{4}$/, ""),
+        },
+      ];
+    }),
+    boardSize?.w ?? 0,
+  );
 
   return (
     <div
@@ -1218,7 +1224,7 @@ export function Corkboard({
             <line
               key={`due-${m.id}`}
               x1={m.x}
-              y1={34}
+              y1={DUE_LABEL_TOP + (m.lane + 1) * DUE_LANE_H}
               x2={m.x}
               y2={boardSize.h}
               stroke="var(--color-line-strong)"
@@ -1298,8 +1304,12 @@ export function Corkboard({
         <div
           key={`due-label-${m.id}`}
           aria-hidden
-          className="pointer-events-none absolute top-1 w-32 -translate-x-1/2 text-center"
-          style={{ left: m.x }}
+          className="pointer-events-none absolute -translate-x-1/2 text-center"
+          style={{
+            left: m.labelX,
+            top: DUE_LABEL_TOP + m.lane * DUE_LANE_H,
+            width: DUE_LABEL_W,
+          }}
         >
           <p className="truncate text-[10px] font-medium leading-tight text-ink-2">
             {m.title}
@@ -1452,6 +1462,47 @@ export function Corkboard({
 
     </div>
   );
+}
+
+const DUE_LABEL_W = 112;
+const DUE_LABEL_TOP = 4;
+/** Two 10px lines of text plus a hair of breathing room. */
+const DUE_LANE_H = 28;
+const DUE_MAX_LANES = 3;
+
+interface DueMarker {
+  id: string;
+  x: number;
+  title: string;
+  date: string;
+}
+
+/**
+ * Assigns each date label the first lane where it doesn't collide with the
+ * previous label (sorted by x), and keeps every label inside the board. The
+ * guide line itself stays on the task's centre; only the label shifts.
+ */
+function layoutDueLabels(
+  markers: DueMarker[],
+  boardW: number,
+): (DueMarker & { lane: number; labelX: number })[] {
+  const half = DUE_LABEL_W / 2;
+  const laneEnds: number[] = [];
+  return [...markers]
+    .sort((a, b) => a.x - b.x)
+    .map((m) => {
+      const labelX =
+        boardW > DUE_LABEL_W
+          ? Math.min(Math.max(m.x, half), boardW - half)
+          : m.x;
+      const left = labelX - half;
+      let lane = laneEnds.findIndex((end) => end + 6 <= left);
+      if (lane === -1) {
+        lane = Math.min(laneEnds.length, DUE_MAX_LANES - 1);
+      }
+      laneEnds[lane] = labelX + half;
+      return { ...m, lane, labelX };
+    });
 }
 
 /** "Diego Molina" → "Diego" (cursor/ghost labels stay short). */

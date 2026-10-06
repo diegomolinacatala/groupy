@@ -330,7 +330,7 @@ function DiamondRail({
   };
 
   return (
-    <div className="flex items-center justify-center gap-1 overflow-x-auto px-1 py-1">
+    <div className="flex items-center justify-center-safe gap-1 overflow-x-auto px-1 py-1">
       <SortableContext
         items={flow.map((b) => b.block.id)}
         strategy={horizontalListSortingStrategy}
