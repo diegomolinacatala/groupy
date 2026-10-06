@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { getTeacherUser } from "@/lib/auth/teacher";
-import { loadTeacherOverview } from "@/lib/data/cloud/teacher-load";
+import {
+  loadTeacherDeliveries,
+  loadTeacherOverview,
+} from "@/lib/data/cloud/teacher-load";
 import { TeacherAccess } from "@/components/teacher/TeacherAccess";
 import { TeacherHome } from "@/components/teacher/TeacherHome";
 
@@ -20,7 +23,10 @@ export default async function TeacherPage({
   const teacher = await getTeacherUser();
   if (!teacher) return <TeacherAccess notice={notice} />;
 
-  const overview = await loadTeacherOverview();
+  const [overview, deliveries] = await Promise.all([
+    loadTeacherOverview(),
+    loadTeacherDeliveries(),
+  ]);
   // The RPC answers null when the session isn't a real account; getTeacherUser
   // already filtered that, so this only fires on races (e.g. just signed out).
   if (overview.state === "unauthenticated") return <TeacherAccess notice={notice} />;
@@ -41,6 +47,10 @@ export default async function TeacherPage({
   }
 
   return (
-    <TeacherHome templates={overview.templates} email={teacher.email ?? ""} />
+    <TeacherHome
+      templates={overview.templates}
+      deliveries={deliveries}
+      email={teacher.email ?? ""}
+    />
   );
 }

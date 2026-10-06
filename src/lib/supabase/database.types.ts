@@ -409,6 +409,10 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: Json;
       };
+      submit_group_report: {
+        Args: { p_group_id: string };
+        Returns: Json;
+      };
     };
     Enums: {
       item_type: "task" | "milestone" | "objective";

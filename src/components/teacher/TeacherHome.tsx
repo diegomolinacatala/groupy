@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Check,
+  FileText,
   LayoutTemplate,
   Link2,
   LogOut,
@@ -22,19 +23,26 @@ import { colorForKey, initialsFromName } from "@/lib/utils/colors";
 import { formatShort } from "@/lib/utils/dates";
 import { cn } from "@/lib/utils/cn";
 import { callCloud } from "@/lib/data/cloud/call";
+import { formatDeliveredAt } from "@/components/report/print";
 
 // The teacher's home: their templates, each with its CLASS code and the
 // groups spawned from it. Deliberately roster-only — who is in each group and
 // who has claimed their seat. Progress, tasks and checklists stay invisible
-// until the final report (the hard rule).
+// until the group delivers its report (the hard rule); delivered reports get
+// a link to the snapshot.
+
+/** Group join code → ISO time its report was delivered. */
+type Deliveries = Record<string, string>;
 
 const firstName = (name: string): string => name.trim().split(/\s+/)[0] || name;
 
 export function TeacherHome({
   templates,
+  deliveries,
   email,
 }: {
   templates: TeacherTemplate[];
+  deliveries: Deliveries;
   email: string;
 }) {
   const router = useRouter();
@@ -115,6 +123,7 @@ export function TeacherHome({
               <TemplateCard
                 key={template.id}
                 template={template}
+                deliveries={deliveries}
                 onDeleted={() => router.refresh()}
               />
             ))}
@@ -123,7 +132,8 @@ export function TeacherHome({
 
         <p className="mt-10 text-xs leading-relaxed text-muted-2">
           Verás qué grupos se han creado y quién ha entrado en cada uno — nunca
-          su trabajo en curso. El informe llega cuando el proyecto se cierra.
+          su trabajo en curso. Cada grupo te entrega su informe desde Groupy
+          cuando lo da por terminado, y aparecerá aquí.
         </p>
       </main>
     </div>
@@ -167,9 +177,11 @@ function EmptyState({
 
 function TemplateCard({
   template,
+  deliveries,
   onDeleted,
 }: {
   template: TeacherTemplate;
+  deliveries: Deliveries;
   onDeleted: () => void;
 }) {
   const [deleting, setDeleting] = useState(false);
@@ -242,7 +254,11 @@ function TemplateCard({
         ) : (
           <ul className="flex flex-col gap-1.5">
             {template.groups.map((group) => (
-              <GroupRow key={group.join_code} group={group} />
+              <GroupRow
+                key={group.join_code}
+                group={group}
+                deliveredAt={deliveries[group.join_code] ?? null}
+              />
             ))}
           </ul>
         )}
@@ -252,12 +268,18 @@ function TemplateCard({
 }
 
 /** One spawned group: roster avatars + names + claimed count + its link. */
-function GroupRow({ group }: { group: SpawnedGroup }) {
+function GroupRow({
+  group,
+  deliveredAt,
+}: {
+  group: SpawnedGroup;
+  deliveredAt: string | null;
+}) {
   const claimed = group.members.filter((m) => m.claimed).length;
   const names = group.members.map((m) => firstName(m.display_name)).join(", ");
 
   return (
-    <li className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition-colors hover:bg-surface-2/60">
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl px-2 py-1.5 transition-colors hover:bg-surface-2/60">
       <span className="flex -space-x-1.5">
         {group.members.slice(0, 5).map((member, index) => {
           const color = colorForKey(member.color_key);
@@ -282,6 +304,18 @@ function GroupRow({ group }: { group: SpawnedGroup }) {
       <span className="shrink-0 text-xs tabular-nums text-muted">
         {claimed}/{group.members.length} dentro
       </span>
+      {deliveredAt ? (
+        <Link
+          href={`/profesor/informe/${group.join_code}`}
+          title={`Entregado el ${formatDeliveredAt(deliveredAt)}`}
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-done-soft px-2.5 text-xs font-medium text-done transition-[filter] hover:brightness-95"
+        >
+          <FileText className="h-3.5 w-3.5" />
+          Ver informe
+        </Link>
+      ) : (
+        <span className="shrink-0 text-xs text-muted-2">Sin entregar</span>
+      )}
       <CopyLinkChip code={group.join_code} label="Enlace del grupo" compact />
     </li>
   );

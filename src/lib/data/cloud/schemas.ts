@@ -252,3 +252,27 @@ export const teacherTemplateSchema = z.object({
 export type TeacherTemplate = z.infer<typeof teacherTemplateSchema>;
 
 export const teacherOverviewSchema = z.array(teacherTemplateSchema);
+
+// --- Report delivery (submit_group_report) -----------------------------------
+
+export const reportDeliveryInputSchema = z.object({
+  joinCode: z.string().trim().min(4).max(12),
+});
+
+export const rpcSubmitReportResultSchema = z.object({
+  submitted_at: z.iso.datetime({ offset: true }),
+});
+
+// The snapshot submit_group_report stores: the group's raw rows, copied
+// server-side. Only the container is checked here — the rows come from our
+// own SQL, and the page that renders them guards the mapping itself.
+const rowSchema = z.looseObject({ id: z.uuid() });
+export const reportPayloadSchema = z.object({
+  version: z.literal(1),
+  submitted_by: z.uuid(),
+  project: rowSchema,
+  group: rowSchema,
+  members: z.array(rowSchema),
+  tasks: z.array(rowSchema),
+});
+export type ReportPayload = z.infer<typeof reportPayloadSchema>;

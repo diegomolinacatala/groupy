@@ -1,45 +1,25 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Download, Send } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
-import { buildReport, formatFullES, type ProjectReport } from "@/lib/data/report";
-import type { Project, TeamMember } from "@/lib/data/types";
-import { PROJECT_STATUS_META } from "@/lib/data/types";
 import { Button } from "@/components/ui/Button";
-import { colorForKey } from "@/lib/utils/colors";
-import { formatShort } from "@/lib/utils/dates";
+import { callCloud } from "@/lib/data/cloud/call";
 import {
-  ReportBar,
-  ReportMeta,
-  ReportSectionTitle,
-  ReportStat,
-} from "./primitives";
-import {
-  AppendixSection,
-  BlocksSection,
-  MemberSection,
-  MethodNote,
-  RisksSection,
-} from "./ReportSections";
+  getReportDelivery,
+  submitReportToTeacher,
+} from "@/lib/data/cloud/report-actions";
+import { ReportDocument } from "./ReportDocument";
+import { formatDeliveredAt, printReport } from "./print";
 
 // Informe — the companion artifact of the whole app: a formal, teacher-facing
 // snapshot of who did what, generated from the group's task log. On screen it
 // reads like a document; "Descargar PDF" prints ONLY the document (the app
 // chrome carries data-print-hide) so the browser's save-as-PDF is the export.
-
-const pct = (fraction: number): number => Math.round(fraction * 100);
+// Groups that came from a class code can also hand it to their teacher.
 
 export function ReportView() {
-  const { project, joinCode } = useProject();
-  const report = buildReport(project);
-
-  const handleDownload = () => {
-    // The print dialog uses the tab title as the default PDF file name.
-    const previous = document.title;
-    document.title = `Informe — ${project.title || "Groupy"}`;
-    window.print();
-    document.title = previous;
-  };
+  const { project, joinCode, mode } = useProject();
 
   return (
     <div className="p-4 md:p-8 print:p-0">
@@ -56,242 +36,126 @@ export function ReportView() {
             </h2>
             <p className="mt-1.5 max-w-md text-sm leading-relaxed text-muted">
               Una foto fiel de lo que lleváis hecho, con la contribución de
-              cada persona. Descárgalo en PDF y entregadlo junto al trabajo.
+              cada persona.
             </p>
           </div>
-          <Button variant="primary" onClick={handleDownload}>
+          <Button
+            // Cloud groups get "Entregar" as the main action just below.
+            variant={mode === "cloud" ? "secondary" : "primary"}
+            onClick={() => printReport(project.title)}
+          >
             <Download className="h-4 w-4" />
             Descargar PDF
           </Button>
         </div>
 
-        <article className="report-document rounded-3xl border border-line bg-surface px-6 py-8 shadow-card sm:px-10 sm:py-12">
-          <ReportCover
-            project={project}
-            report={report}
-            joinCode={joinCode}
-          />
-          <SummarySection report={report} />
-          <ContributionSection report={report} />
-          <MemberSection members={report.members} />
-          <BlocksSection blocks={report.blocks} />
-          <RisksSection report={report} />
-          <AppendixSection rows={report.rows} project={project} />
-          <MethodNote />
-        </article>
+        {mode === "cloud" && joinCode && <DeliveryPanel joinCode={joinCode} />}
+
+        <ReportDocument project={project} joinCode={joinCode} />
       </div>
     </div>
   );
 }
 
-// --- Portada -----------------------------------------------------------------
+type Delivery =
+  | { state: "loading" }
+  | { state: "unavailable" }
+  | { state: "ready"; submittedAt: string | null }
+  | { state: "error"; message: string };
 
-function ReportCover({
-  project,
-  report,
-  joinCode,
-}: {
-  project: Project;
-  report: ProjectReport;
-  joinCode: string | null;
-}) {
-  return (
-    <header>
-      <div className="flex items-baseline justify-between gap-4 border-b-2 border-ink pb-3">
-        <span className="type-display text-lg text-ink">Groupy</span>
-        <span className="type-overline">Informe de seguimiento</span>
-      </div>
+/**
+ * Hand-in to the teacher (cloud groups spawned from a class code only). The
+ * server snapshots the real rows, so what the teacher gets is exactly this
+ * document as of the click. Delivering again replaces the previous copy.
+ */
+function DeliveryPanel({ joinCode }: { joinCode: string }) {
+  const [delivery, setDelivery] = useState<Delivery>({ state: "loading" });
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
-      <h1 className="type-display mt-8 text-4xl leading-[1.05] text-ink">
-        {project.title || "Trabajo en grupo"}
-      </h1>
-      {project.description && (
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
-          {project.description}
-        </p>
-      )}
+  useEffect(() => {
+    let cancelled = false;
+    void callCloud(() => getReportDelivery({ joinCode })).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) {
+        setDelivery({ state: "error", message: result.error });
+      } else if (!result.canDeliver) {
+        setDelivery({ state: "unavailable" });
+      } else {
+        setDelivery({ state: "ready", submittedAt: result.submittedAt });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [joinCode]);
 
-      <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-        <ReportMeta
-          label="Generado"
-          value={formatFullES(report.generatedAt)}
-        />
-        <ReportMeta label="Entrega" value={formatShort(project.dueDate)} />
-        <ReportMeta
-          label="Equipo"
-          value={`${project.members.length} ${project.members.length === 1 ? "miembro" : "miembros"}`}
-        />
-        <ReportMeta
-          label="Estado"
-          value={
-            joinCode
-              ? `${PROJECT_STATUS_META[project.status].label} · ${joinCode}`
-              : PROJECT_STATUS_META[project.status].label
-          }
-        />
-      </dl>
-
-      <p className="mt-6 rounded-xl border border-line bg-surface-2/60 px-4 py-3 text-xs leading-relaxed text-ink-2">
-        Documento dirigido al profesorado. Generado automáticamente a partir
-        del registro de trabajo del grupo en Groupy — sin intervención manual
-        sobre los datos.
-      </p>
-    </header>
-  );
-}
-
-// --- 01 · Resumen --------------------------------------------------------------
-
-function SummarySection({ report }: { report: ProjectReport }) {
-  const { totals, pace } = report;
-  const timePercent =
-    pace.timeFraction === null ? null : pct(pace.timeFraction);
-  const attention =
-    report.risks.overdue.length +
-    report.risks.blocked.length +
-    report.risks.unassignedCount;
-
-  return (
-    <section>
-      <ReportSectionTitle index="01" title="Resumen" />
-
-      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
-        <ReportStat
-          label="Avance"
-          value={`${totals.weightedPercent}%`}
-          hint="Ponderado por importancia"
-        />
-        <ReportStat
-          label="Tareas"
-          value={`${totals.done}/${totals.tasks}`}
-          hint={`${totals.inProgress} en curso · ${totals.todo} pendientes`}
-        />
-        <ReportStat
-          label="Plazo"
-          value={timePercent === null ? "—" : `${timePercent}%`}
-          hint={
-            pace.daysLeft === null
-              ? "Sin fechas definidas"
-              : pace.daysLeft >= 0
-                ? `Quedan ${pace.daysLeft} días`
-                : `Vencido hace ${Math.abs(pace.daysLeft)} días`
-          }
-        />
-        <ReportStat
-          label="Atención"
-          value={attention}
-          hint="Fuera de plazo, bloqueadas o sin dueño"
-        />
-      </div>
-
-      {timePercent !== null && (
-        <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-line bg-surface-2/40 p-4">
-          <ReportBar
-            label="Trabajo completado"
-            percent={totals.weightedPercent}
-            color="var(--color-accent)"
-          />
-          <ReportBar
-            label="Plazo consumido"
-            percent={timePercent}
-            color="var(--color-ink)"
-          />
-        </div>
-      )}
-
-      <div className="mt-5 flex flex-col gap-2.5">
-        {report.summary.map((paragraph, i) => (
-          <p key={i} className="text-sm leading-relaxed text-ink-2">
-            {paragraph}
-          </p>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// --- 02 · Reparto del trabajo completado ---------------------------------------
-
-interface ContributionSegment {
-  key: string;
-  label: string;
-  color: string;
-  share: number;
-  member: TeamMember | null;
-}
-
-function ContributionSection({ report }: { report: ProjectReport }) {
-  const memberDone = report.members.reduce((s, m) => s + m.weightedDone, 0);
-  const totalDone = memberDone + report.risks.doneUnassignedWeight;
-  if (totalDone === 0) {
+  if (delivery.state === "loading" || delivery.state === "unavailable") {
+    return null;
+  }
+  if (delivery.state === "error") {
     return (
-      <section className="break-inside-avoid">
-        <ReportSectionTitle index="02" title="Reparto del trabajo completado" />
-        <p className="mt-3 text-sm text-muted">
-          Todavía no hay tareas completadas, así que no puede analizarse el
-          reparto del trabajo hecho.
-        </p>
-      </section>
+      <p
+        data-print-hide
+        className="mb-6 rounded-xl bg-surface-2 px-4 py-3 text-xs text-muted"
+      >
+        No se ha podido comprobar si el informe está entregado: {delivery.message}
+      </p>
     );
   }
 
-  const segments: ContributionSegment[] = report.members
-    .filter((m) => m.weightedDone > 0)
-    .map((m) => ({
-      key: m.member.id,
-      label: m.member.name,
-      color: colorForKey(m.member.colorKey).bg,
-      share: m.weightedDone / totalDone,
-      member: m.member,
-    }));
-  if (report.risks.doneUnassignedWeight > 0) {
-    segments.push({
-      key: "unassigned",
-      label: "Sin responsable",
-      color: "var(--color-muted-2)",
-      share: report.risks.doneUnassignedWeight / totalDone,
-      member: null,
-    });
-  }
+  const submittedAt = delivery.submittedAt;
+
+  const handleSubmit = async () => {
+    if (sending) return;
+    const question = submittedAt
+      ? "¿Volver a entregar el informe? El profesor verá esta versión en lugar de la anterior."
+      : "¿Entregar el informe al profesor? Recibirá una copia de cómo está el trabajo ahora mismo. Si lo necesitáis, podréis volver a entregarlo.";
+    if (!window.confirm(question)) return;
+    setSending(true);
+    setSendError(null);
+    const result = await callCloud(() => submitReportToTeacher({ joinCode }));
+    setSending(false);
+    if (!result.ok) {
+      setSendError(result.error);
+      return;
+    }
+    setDelivery({ state: "ready", submittedAt: result.submittedAt });
+  };
 
   return (
-    <section className="break-inside-avoid">
-      <ReportSectionTitle index="02" title="Reparto del trabajo completado" />
-      <p className="mt-3 text-xs leading-relaxed text-muted">
-        Cada franja representa la parte del trabajo ya completado que aporta
-        cada miembro, ponderando las tareas por su importancia.
-      </p>
-
-      <div className="mt-4 flex h-4 overflow-hidden rounded-full">
-        {segments.map((segment) => (
-          <div
-            key={segment.key}
-            title={`${segment.label}: ${pct(segment.share)}%`}
-            style={{
-              width: `${segment.share * 100}%`,
-              backgroundColor: segment.color,
-            }}
-          />
-        ))}
+    <section
+      data-print-hide
+      className="mb-6 flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-card sm:flex-row sm:items-center sm:justify-between sm:p-5"
+    >
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-ink">
+          {submittedAt ? "Informe entregado" : "Entregar al profesor"}
+        </p>
+        <p className="mt-0.5 text-xs leading-relaxed text-muted">
+          {submittedAt
+            ? `El profesor tiene la versión del ${formatDeliveredAt(submittedAt)}. Si seguís trabajando, podéis volver a entregarlo.`
+            : "El profesor no ve vuestro trabajo en curso: solo lo que le entreguéis desde aquí."}
+        </p>
+        {sendError && (
+          <p className="mt-2 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">
+            {sendError}
+          </p>
+        )}
       </div>
-
-      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5">
-        {segments.map((segment) => (
-          <span
-            key={segment.key}
-            className="inline-flex items-center gap-1.5 text-xs text-ink-2"
-          >
-            <span
-              className="h-2 w-2 rounded-full"
-              style={{ backgroundColor: segment.color }}
-            />
-            {segment.label}
-            <span className="tabular-nums text-muted">
-              {pct(segment.share)}%
-            </span>
-          </span>
-        ))}
-      </div>
+      <Button
+        variant={submittedAt ? "secondary" : "primary"}
+        onClick={() => void handleSubmit()}
+        disabled={sending}
+        className="shrink-0"
+      >
+        {sending ? (
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />
+        ) : (
+          <Send className="h-4 w-4" />
+        )}
+        {submittedAt ? "Volver a entregar" : "Entregar"}
+      </Button>
     </section>
   );
 }
