@@ -109,6 +109,40 @@ export async function claimCloudMember(
   return { ok: true, joinCode: result.data.join_code };
 }
 
+/**
+ * Frees a claimed seat so its owner can claim it again from another device.
+ * Anyone inside the group may do it (a teammate, or the owner before
+ * switching); the RPC refuses outsiders and the teacher.
+ */
+export async function releaseCloudMember(
+  input: unknown,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = claimInputSchema.safeParse(input);
+  if (!parsed.success) return INVALID_INPUT;
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("release_member", {
+    p_member_id: parsed.data.memberId,
+  });
+  if (error) {
+    if (
+      error.code === "PGRST202" ||
+      error.message.includes("Could not find the function")
+    ) {
+      return {
+        ok: false,
+        error:
+          "Esta opción aún no está activada en el servidor. Pide ayuda a quien gestiona Groupy.",
+      };
+    }
+    if (error.message.includes("NOT_A_MEMBER")) {
+      return { ok: false, error: "Solo alguien del grupo puede liberar un acceso." };
+    }
+    return { ok: false, error: humanizeClaimError(error.message) };
+  }
+  return { ok: true };
+}
+
 function humanizeClaimError(message: string): string {
   if (message.includes("ALREADY_CLAIMED")) {
     return "Otra persona ya ha entrado con ese nombre.";

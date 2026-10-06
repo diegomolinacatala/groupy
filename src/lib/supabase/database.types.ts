@@ -409,6 +409,10 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: Json;
       };
+      release_member: {
+        Args: { p_member_id: string };
+        Returns: Json;
+      };
       submit_group_report: {
         Args: { p_group_id: string };
         Returns: Json;

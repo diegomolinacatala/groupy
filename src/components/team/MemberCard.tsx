@@ -1,7 +1,10 @@
 "use client";
 
-import { Check, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Check, KeyRound, Trash2 } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
+import { releaseCloudMember } from "@/lib/data/cloud/actions";
+import { callCloud } from "@/lib/data/cloud/call";
 import { Avatar } from "@/components/ui/Avatar";
 import { InlineText } from "@/components/ui/InlineText";
 import { IconButton } from "@/components/ui/IconButton";
@@ -14,7 +17,8 @@ interface MemberCardProps {
 }
 
 export function MemberCard({ member }: MemberCardProps) {
-  const { updateMember, deleteMember } = useProject();
+  const { updateMember, deleteMember, mode, currentMemberId } = useProject();
+  const canRelease = mode === "cloud" && member.id !== currentMemberId;
 
   const handleDelete = () => {
     if (window.confirm(`¿Eliminar a ${member.name || "este miembro"} del equipo?`)) {
@@ -98,6 +102,58 @@ export function MemberCard({ member }: MemberCardProps) {
         ariaLabel="Correo del miembro"
         className="-ml-1.5 rounded-lg bg-surface-2/60 text-xs text-ink-2"
       />
+
+      {canRelease && <ReleaseSeatButton member={member} />}
     </div>
+  );
+}
+
+/**
+ * Cloud only, on a teammate's card: frees their seat when they changed phone
+ * or laptop and their name shows "Ya dentro" on the new device.
+ */
+function ReleaseSeatButton({ member }: { member: TeamMember }) {
+  const [state, setState] = useState<"idle" | "pending" | "done">("idle");
+  const name = member.name || "este miembro";
+
+  const handleRelease = async () => {
+    if (state !== "idle") return;
+    if (
+      !window.confirm(
+        `¿Liberar el acceso de ${name}? Úsalo si ha cambiado de móvil u ordenador: podrá volver a entrar tocando su nombre.`,
+      )
+    ) {
+      return;
+    }
+    setState("pending");
+    const result = await callCloud(() =>
+      releaseCloudMember({ memberId: member.id }),
+    );
+    if (!result.ok) {
+      setState("idle");
+      window.alert(result.error);
+      return;
+    }
+    setState("done");
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleRelease()}
+      disabled={state !== "idle"}
+      className="-ml-1 inline-flex w-fit items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:hover:bg-transparent"
+    >
+      {state === "done" ? (
+        <Check className="h-3.5 w-3.5 text-accent" />
+      ) : (
+        <KeyRound className="h-3.5 w-3.5" />
+      )}
+      {state === "done"
+        ? "Acceso liberado: ya puede entrar desde otro dispositivo"
+        : state === "pending"
+          ? "Liberando…"
+          : "Liberar acceso (cambio de dispositivo)"}
+    </button>
   );
 }

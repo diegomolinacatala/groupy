@@ -163,9 +163,15 @@ export function WhoAreYouScreen({ preview }: { preview: ProjectPreview }) {
             </p>
           )}
 
-          <p className="mt-6 text-xs text-muted-2">
+          <p className="mt-6 text-xs leading-relaxed text-muted-2">
             ¿No estás en la lista? Alguien del grupo puede añadirte en
             «Equipo».
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-muted-2">
+            ¿Tu nombre sale como «Ya dentro» pero estás en otro móvil u
+            ordenador? Pide a alguien del grupo que pulse «Liberar acceso» en
+            tu tarjeta de «Equipo» (o hazlo tú desde el dispositivo anterior)
+            y vuelve a tocar tu nombre.
           </p>
         </div>
       </main>

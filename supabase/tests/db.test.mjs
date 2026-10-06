@@ -154,7 +154,40 @@ await (async () => {
     ok('wizard project cannot deliver (no teacher)', /NO_TEACHER/.test(r.error || ''), JSON.stringify(r));
   }
 
-  // 11. Existing behaviour still intact.
+  // 11. Changing devices: release_member frees a seat for re-claiming.
+  for (const [k, anon] of [['S1b', true]]) {
+    const u = await db.query('insert into auth.users (email, is_anonymous) values ($1, $2) returning id', [k + '@x.test', anon]);
+    users[k] = { id: u.rows[0].id, anon };
+  }
+  const ana = spawn.members[0].id;
+  const beto = spawn.members[1].id;
+  r = await as('S1b', 'select public.claim_member($1)', [ana]);
+  ok('second device cannot take a claimed seat', /ALREADY_CLAIMED/.test(r.error || ''), JSON.stringify(r));
+  r = await as('S2', 'select public.release_member($1)', [ana]);
+  ok('outsider cannot release a seat', /NOT_A_MEMBER/.test(r.error || ''), JSON.stringify(r));
+  r = await as('T', 'select public.release_member($1)', [ana]);
+  ok('teacher cannot release a seat', /NOT_A_MEMBER/.test(r.error || ''), JSON.stringify(r));
+  r = await as(null, 'select public.release_member($1)', [ana]);
+  ok('no-session cannot release', /permission denied/.test(r.error || ''), JSON.stringify(r));
+  r = await as('S1', 'select public.release_member($1) as r', [ana]);
+  ok('member releases own seat', !r.error, r.error);
+  r = await as('S1', 'select count(*)::int n from tasks where group_id=$1', [spawn.group_id]);
+  ok('released device loses group access', r.rows?.[0].n === 0, JSON.stringify(r));
+  r = await as('S1b', 'select public.claim_member($1)', [ana]);
+  ok('new device claims the freed seat', !r.error, r.error);
+  r = await as('S1b', 'select count(*)::int n from tasks where group_id=$1', [spawn.group_id]);
+  ok('new device sees the group work', r.rows?.[0].n >= 3, JSON.stringify(r));
+  // A teammate (now S1b as Ana) frees Beto's seat after S3 claims it.
+  r = await as('S3', 'select public.claim_member($1)', [beto]);
+  ok('teammate claims Beto', !r.error, r.error);
+  r = await as('S1b', 'select public.release_member($1)', [beto]);
+  ok('teammate can release another seat', !r.error, r.error);
+  r = await as('S1b', "select (select auth_uid from group_members where id=$1) is null as freed", [beto]);
+  ok('released seat is unclaimed', r.rows?.[0]?.freed === true, JSON.stringify(r));
+  r = await as('S1', 'select public.release_member($1)', ['00000000-0000-4000-8000-000000000000']);
+  ok('unknown member id is reported', /MEMBER_NOT_FOUND/.test(r.error || ''), JSON.stringify(r));
+
+  // 12. Existing behaviour still intact.
   r = await as('T', 'select public.get_teacher_overview() as r');
   ok('teacher overview still works', Array.isArray(r.rows?.[0]?.r) && r.rows[0].r[0].groups.length === 1, JSON.stringify(r).slice(0, 200));
 

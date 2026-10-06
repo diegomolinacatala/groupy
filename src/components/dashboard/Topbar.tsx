@@ -1,17 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   CalendarClock,
   Check,
   ChevronDown,
   CircleUserRound,
   Link2,
+  LogOut,
   Plus,
   Users,
 } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useLiveRoom } from "@/lib/data/cloud/live";
+import { releaseCloudMember } from "@/lib/data/cloud/actions";
+import { callCloud } from "@/lib/data/cloud/call";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import { InlineText } from "@/components/ui/InlineText";
 import { Avatar } from "@/components/ui/Avatar";
@@ -273,15 +277,61 @@ function IdentityChip() {
               <Users className="h-4 w-4 text-muted" />
               Ver el equipo
             </button>
+            {mode === "cloud" && me && <SwitchDeviceButton me={me} />}
             <p className="px-2 pb-1 pt-1.5 text-[11px] leading-relaxed text-muted-2">
               {mode === "cloud"
-                ? "Tu identidad queda vinculada a este dispositivo."
+                ? "Tu nombre queda vinculado a este dispositivo. Si vas a usar otro móvil u ordenador, sal primero aquí."
                 : "En la demo puedes cambiar de persona con un clic."}
             </p>
           </div>
         </div>
       )}
     </Popover>
+  );
+}
+
+/**
+ * Cloud only: frees this device's seat so the student can claim their name
+ * from another phone/laptop. The page then re-renders as the who-are-you
+ * screen (this device is no longer inside the group).
+ */
+function SwitchDeviceButton({ me }: { me: { id: string; name: string } }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+
+  const handleRelease = async () => {
+    if (pending) return;
+    if (
+      !window.confirm(
+        `Vas a salir como ${firstName(me.name)} en este dispositivo. Después podrás entrar tocando tu nombre desde otro móvil u ordenador.`,
+      )
+    ) {
+      return;
+    }
+    setPending(true);
+    const result = await callCloud(() => releaseCloudMember({ memberId: me.id }));
+    if (!result.ok) {
+      setPending(false);
+      window.alert(result.error);
+      return;
+    }
+    router.refresh();
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleRelease()}
+      disabled={pending}
+      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-ink-2 transition-colors hover:bg-surface-2 disabled:opacity-50"
+    >
+      {pending ? (
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-accent" />
+      ) : (
+        <LogOut className="h-4 w-4 text-muted" />
+      )}
+      Usar otro dispositivo
+    </button>
   );
 }
 
