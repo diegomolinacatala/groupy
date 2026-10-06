@@ -365,9 +365,15 @@ export function LiveRoomProvider({
 
     let disposed = false;
     let leaveRoom: (() => void) | null = null;
-    void loadBrowserClient().then((supabase) => {
-      if (!disposed) leaveRoom = joinRoom(supabase);
-    });
+    loadBrowserClient()
+      .then((supabase) => {
+        if (!disposed) leaveRoom = joinRoom(supabase);
+      })
+      .catch((err: unknown) => {
+        // Chunk failed to load (flaky network): edits still persist through
+        // the mirror; only presence / live cursors are missing until reload.
+        console.error("[groupy] sala en vivo no disponible:", err);
+      });
     return () => {
       disposed = true;
       leaveRoom?.();

@@ -84,5 +84,7 @@ export function createCloudMirror(ctx: CloudContext): ProjectMirror {
       enqueue("las fortalezas", () =>
         setCloudMemberStrengths({ memberId, strengths }),
       ),
+    // The chain never rejects (enqueue catches), so this only waits.
+    flush: () => chain,
   };
 }

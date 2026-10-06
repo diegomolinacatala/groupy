@@ -4,8 +4,16 @@
 export function printReport(title: string): void {
   const previous = document.title;
   document.title = `Informe — ${title || "Groupy"}`;
+  // Mobile browsers return from print() before the dialog reads the title;
+  // restore it only once printing is really over.
+  window.addEventListener(
+    "afterprint",
+    () => {
+      document.title = previous;
+    },
+    { once: true },
+  );
   window.print();
-  document.title = previous;
 }
 
 const DELIVERED_FORMAT = new Intl.DateTimeFormat("es-ES", {

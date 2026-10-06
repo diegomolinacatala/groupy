@@ -77,7 +77,8 @@ export function InlineText({
           e.currentTarget.blur();
         }
       }}
-      className={base}
+      // Long values (a project title on a phone) end in "…" while not editing.
+      className={cn(base, "text-ellipsis")}
     />
   );
 }

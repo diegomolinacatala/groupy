@@ -13,7 +13,10 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
-  const type = searchParams.get("type") as EmailOtpType | null;
+  // Only the sign-up confirmation belongs here (never recovery/magic links).
+  const rawType = searchParams.get("type");
+  const type: EmailOtpType | null =
+    rawType === "signup" || rawType === "email" ? rawType : null;
 
   const supabase = await createClient();
   let signedIn = false;

@@ -60,7 +60,7 @@ Ops runbook: `docs/PUESTA-EN-MARCHA.md`; teacher-facing guide: `docs/GUIA-PROFES
   functions. The app degrades with a clear message if they're missing (PGRST202).
 - **`npm run test:db`** (`supabase/tests/db.test.mjs`): every migration on in-memory
   Postgres (PGlite, no Docker) with stubbed `auth.uid()/auth.jwt()/auth.users` and
-  anon/authenticated roles, plus 40 RLS/RPC checks. Run before every `db push`.
+  anon/authenticated roles, plus 41 RLS/RPC checks. Run before every `db push`.
 - **Report delivery (closes the teacher loop)**: the Informe tab of a cloud group
   spawned from a class code shows "Entregar al profesor". The RPC snapshots the group's
   REAL rows (project/group/members minus `auth_uid`/tasks) into `reports` (upsert —

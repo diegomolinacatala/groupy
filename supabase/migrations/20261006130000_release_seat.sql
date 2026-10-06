@@ -10,6 +10,10 @@
 -- merely hold the code still cannot take a claimed seat, and a signed-in
 -- teacher can never be inside a group (claim_member refuses them), so they
 -- can't release seats either.
+--
+-- Trade-off (deliberate, for the pilot): a teammate could free someone
+-- else's seat and take it from a second device. Every release is therefore
+-- written to activity_log (who freed whose seat, when) so it stays auditable.
 
 create or replace function public.release_member(p_member_id uuid)
 returns jsonb
@@ -18,26 +22,42 @@ security definer
 set search_path = public
 as $$
 declare
-  v_uid   uuid := auth.uid();
-  v_group uuid;
+  v_uid    uuid := auth.uid();
+  v_group  uuid;
+  v_target text;
+  v_actor  uuid;
 begin
   if v_uid is null then
     raise exception 'AUTH_REQUIRED';
   end if;
 
-  select group_id into v_group from group_members where id = p_member_id;
+  select group_id, display_name into v_group, v_target
+  from group_members where id = p_member_id;
   if v_group is null then
     raise exception 'MEMBER_NOT_FOUND';
   end if;
 
-  if not exists (
-    select 1 from group_members
-    where group_id = v_group and auth_uid = v_uid
-  ) then
+  select id into v_actor
+  from group_members
+  where group_id = v_group and auth_uid = v_uid
+  order by created_at
+  limit 1;
+  if v_actor is null then
     raise exception 'NOT_A_MEMBER';
   end if;
 
   update group_members set auth_uid = null where id = p_member_id;
+
+  insert into activity_log (group_id, actor_member, action, note)
+  values (
+    v_group,
+    v_actor,
+    'seat_released',
+    case when v_actor = p_member_id
+      then 'Cambio de dispositivo'
+      else 'Acceso liberado: ' || v_target
+    end
+  );
 
   return jsonb_build_object('member_id', p_member_id);
 end;

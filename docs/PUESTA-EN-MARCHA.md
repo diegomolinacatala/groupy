@@ -39,7 +39,7 @@ memoria, sin Docker):
 npm run test:db
 ```
 
-Debe terminar en `40 passed, 0 failed`. Después:
+Debe terminar en `41 passed, 0 failed`. Después:
 
 ```bash
 npx supabase link --project-ref etqrzekabjdtkpbeztoe
@@ -121,6 +121,23 @@ código** y siguen abiertos:
 - [ ] Solicitud al comité de ética (`comite.etica@upv.es`).
 - [ ] Decisión de alojamiento en la UE (Supabase ya está en `eu-west-1`,
       Irlanda; Vercel sirve desde su red global).
+
+## Limitaciones conocidas (aceptadas para el piloto)
+
+- **Suplantación dentro del grupo:** «Liberar acceso» permite que un compañero
+  libere el sitio de otro y lo ocupe desde un segundo dispositivo. Cada
+  liberación queda registrada en `activity_log` (`seat_released`: quién, a
+  quién, cuándo). Con datos ficticios no importa; con alumnos reales conviene
+  revisarlo.
+- **El profesor y los códigos de grupo:** el profesor ve los códigos de los
+  grupos (y también aparecen en la página pública del código de clase). En una
+  ventana privada podría ocupar un sitio libre de un grupo como si fuera un
+  alumno. Es anterior a esta puesta a punto; cerrarlo exige ligar cada sitio a
+  un secreto del alumno.
+- **Zoom en Android:** el `viewport` fija `maximum-scale=1` para que iOS no
+  haga zoom al tocar cada campo; en Android eso impide ampliar con dos dedos.
+- **Si un compañero libera tu sitio** mientras tienes el panel abierto, tus
+  siguientes cambios no se guardan hasta que recargues y vuelvas a entrar.
 
 ## Qué cambió en esta puesta a punto (resumen técnico)
 

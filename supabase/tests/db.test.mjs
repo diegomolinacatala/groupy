@@ -184,6 +184,8 @@ await (async () => {
   ok('teammate can release another seat', !r.error, r.error);
   r = await as('S1b', "select (select auth_uid from group_members where id=$1) is null as freed", [beto]);
   ok('released seat is unclaimed', r.rows?.[0]?.freed === true, JSON.stringify(r));
+  r = await db.query("select action, note from activity_log where group_id=$1 and action='seat_released' order by created_at", [spawn.group_id]);
+  ok('every release is audited', r.rows.length === 2 && r.rows[0].note === 'Cambio de dispositivo' && r.rows[1].note === 'Acceso liberado: Beto', JSON.stringify(r.rows));
   r = await as('S1', 'select public.release_member($1)', ['00000000-0000-4000-8000-000000000000']);
   ok('unknown member id is reported', /MEMBER_NOT_FOUND/.test(r.error || ''), JSON.stringify(r));
 

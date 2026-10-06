@@ -260,7 +260,10 @@ export function useCloudRealtime({
         });
     };
 
-    void subscribe();
+    subscribe().catch((err: unknown) => {
+      // Teammates' edits then show up on the next reload instead of live.
+      console.error("[groupy] sincronización en vivo no disponible:", err);
+    });
 
     return () => {
       cancelled = true;

@@ -1722,34 +1722,38 @@ function CorkNode({
         <>
           <span
             onPointerDown={(e) => onPortDown("in", e)}
+            // The node's touch-hold drag must not also start under a port.
+            onTouchStart={(e) => e.stopPropagation()}
             onPointerMove={onPortMove}
             onPointerUp={onPortUp}
             onClick={(e) => e.stopPropagation()}
             aria-hidden
             title="Arrastra para añadir una dependencia"
             className={cn(
-              "absolute -left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 cursor-crosshair touch-none rounded-full border-2 border-line-strong bg-surface transition-all hover:scale-125 hover:border-accent hover:bg-accent-soft",
+              "absolute -left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 cursor-crosshair touch-none rounded-full border-2 pointer-coarse:h-5 pointer-coarse:w-5 border-line-strong bg-surface transition-all hover:scale-125 hover:border-accent hover:bg-accent-soft",
               isPortSource && portDrag?.direction === "in"
                 ? "scale-125 border-accent bg-accent-soft opacity-100"
                 : isSnapped && portDrag?.direction === "out"
                   ? "border-accent bg-accent-soft opacity-100"
-                  : "opacity-0 group-hover/node:opacity-100",
+                  : "opacity-0 group-hover/node:opacity-100 pointer-coarse:opacity-100",
             )}
           />
           <span
             onPointerDown={(e) => onPortDown("out", e)}
+            // The node's touch-hold drag must not also start under a port.
+            onTouchStart={(e) => e.stopPropagation()}
             onPointerMove={onPortMove}
             onPointerUp={onPortUp}
             onClick={(e) => e.stopPropagation()}
             aria-hidden
             title="Arrastra hasta la tarea que desbloquea"
             className={cn(
-              "absolute -right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 cursor-crosshair touch-none rounded-full border-2 border-line-strong bg-surface transition-all hover:scale-125 hover:border-accent hover:bg-accent-soft",
+              "absolute -right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 cursor-crosshair touch-none rounded-full border-2 pointer-coarse:h-5 pointer-coarse:w-5 border-line-strong bg-surface transition-all hover:scale-125 hover:border-accent hover:bg-accent-soft",
               isPortSource && portDrag?.direction === "out"
                 ? "scale-125 border-accent bg-accent-soft opacity-100"
                 : isSnapped && portDrag?.direction === "in"
                   ? "border-accent bg-accent-soft opacity-100"
-                  : "opacity-0 group-hover/node:opacity-100",
+                  : "opacity-0 group-hover/node:opacity-100 pointer-coarse:opacity-100",
             )}
           />
         </>

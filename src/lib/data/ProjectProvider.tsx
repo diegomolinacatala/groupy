@@ -89,6 +89,8 @@ export interface ProjectMirror {
     taskPatches: { id: string; assigneeIds: string[] }[],
   ) => void;
   setMemberStrengths: (memberId: string, strengths: string[]) => void;
+  /** Resolves once every write queued so far has reached the store. */
+  flush: () => Promise<void>;
 }
 
 export interface CloudBinding {
@@ -170,6 +172,12 @@ interface ProjectContextValue extends ProjectApi {
    * changes are noticeable without replaying on unrelated re-renders.
    */
   remoteGlow: ReadonlyMap<string, number>;
+  /**
+   * Waits for every pending cloud write (no-op locally). Call before anything
+   * that snapshots the DB — e.g. delivering the report — so the last click
+   * is in it.
+   */
+  flushCloud: () => Promise<void>;
 }
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -222,6 +230,7 @@ function broadcastMirror(mirror: ProjectMirror, room: LiveRoom): ProjectMirror {
       mirror.deleteMember(id, taskPatches);
     },
     setMemberStrengths: mirror.setMemberStrengths,
+    flush: mirror.flush,
   };
 }
 
@@ -553,6 +562,7 @@ export function ProjectProvider({
     joinCode: cloud?.joinCode ?? null,
     currentMemberId,
     remoteGlow,
+    flushCloud: () => mirror?.flush() ?? Promise.resolve(),
     ...api,
   };
 

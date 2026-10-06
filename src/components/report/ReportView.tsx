@@ -69,6 +69,7 @@ type Delivery =
  * document as of the click. Delivering again replaces the previous copy.
  */
 function DeliveryPanel({ joinCode }: { joinCode: string }) {
+  const { flushCloud } = useProject();
   const [delivery, setDelivery] = useState<Delivery>({ state: "loading" });
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -114,6 +115,8 @@ function DeliveryPanel({ joinCode }: { joinCode: string }) {
     if (!window.confirm(question)) return;
     setSending(true);
     setSendError(null);
+    // The server snapshots the DB: let edits still in flight land first.
+    await flushCloud();
     const result = await callCloud(() => submitReportToTeacher({ joinCode }));
     setSending(false);
     if (!result.ok) {
