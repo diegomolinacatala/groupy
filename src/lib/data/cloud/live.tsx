@@ -69,14 +69,6 @@ export interface LiveRoom {
     active: boolean;
   }) => void;
   /**
-   * Ephemeral game channel (the map's air-hockey easter egg). Small,
-   * fire-and-forget payloads on a dedicated "game" event — kept OUT of the hot
-   * store so the ball loop never re-renders cursors/drags. Throttled ~40ms.
-   */
-  sendGame: (payload: Record<string, unknown>) => void;
-  /** Raw callback on every incoming "game" broadcast. Returns an unsubscribe. */
-  subscribeGame: (onMessage: (payload: Record<string, unknown>) => void) => () => void;
-  /**
    * Broadcast a durable edit to peers on the fast path (no throttle — every
    * edit must arrive, and in order). Fire-and-forget; the origin tab never
    * receives its own edit back (broadcast self:false).
@@ -167,8 +159,6 @@ function makeThrottled<T>(ms: number, send: (value: T) => void) {
 
 /** ~12 msg/s per stream — smooth with the CSS interpolation on the far side. */
 const SEND_INTERVAL_MS = 80;
-/** ~25 msg/s for the game ball — snappier than cursors, still cheap. */
-const GAME_INTERVAL_MS = 40;
 /** A cursor not refreshed in this window is gone (tab crashed / sleeping). */
 const CURSOR_TTL_MS = 5000;
 /** How long a finished drag ghost may linger before pruning. */
@@ -197,9 +187,6 @@ export function LiveRoomProvider({
     drags: new Map<string, LiveDrag>(),
     listeners: new Set<() => void>(),
   });
-  // Game channel listeners live outside the hot store — the air-hockey loop
-  // drives its own refs/rAF and must not tick the hot version.
-  const gameListeners = useRef(new Set<(payload: Record<string, unknown>) => void>());
   // Durable-edit listeners also live outside the hot store: an incoming edit
   // goes to the reducer (a state dispatch), never the cursor/drag render path.
   const editListeners = useRef(new Set<(action: RemoteAction) => void>());
@@ -207,8 +194,7 @@ export function LiveRoomProvider({
   const senders = useRef<{
     cursor: ReturnType<typeof makeThrottled<Record<string, unknown>>> | null;
     drag: ReturnType<typeof makeThrottled<Record<string, unknown>>> | null;
-    game: ReturnType<typeof makeThrottled<Record<string, unknown>>> | null;
-  }>({ cursor: null, drag: null, game: null });
+  }>({ cursor: null, drag: null });
 
   useEffect(() => {
     const store = hot.current;
@@ -225,7 +211,7 @@ export function LiveRoomProvider({
     channelRef.current = channel;
 
     const rawSend = (
-      event: "cursor" | "drag" | "game",
+      event: "cursor" | "drag",
       payload: Record<string, unknown>,
     ) => {
       // Fire-and-forget: a dropped frame is invisible, the next one corrects.
@@ -240,11 +226,7 @@ export function LiveRoomProvider({
       SEND_INTERVAL_MS,
       (payload) => rawSend("drag", payload),
     );
-    const gameSender = makeThrottled<Record<string, unknown>>(
-      GAME_INTERVAL_MS,
-      (payload) => rawSend("game", payload),
-    );
-    senders.current = { cursor: cursorSender, drag: dragSender, game: gameSender };
+    senders.current = { cursor: cursorSender, drag: dragSender };
 
     channel.on("broadcast", { event: "cursor" }, ({ payload }) => {
       const p = payload as Partial<LiveCursor> & { gone?: boolean };
@@ -295,12 +277,6 @@ export function LiveRoomProvider({
         ts: Date.now(),
       });
       notify();
-    });
-
-    channel.on("broadcast", { event: "game" }, ({ payload }) => {
-      const p = payload as Record<string, unknown> | undefined;
-      if (!p || typeof p !== "object") return;
-      for (const listener of gameListeners.current) listener(p);
     });
 
     channel.on("broadcast", { event: "edit" }, ({ payload }) => {
@@ -376,8 +352,7 @@ export function LiveRoomProvider({
       clearInterval(pruner);
       cursorSender.cancel();
       dragSender.cancel();
-      gameSender.cancel();
-      senders.current = { cursor: null, drag: null, game: null };
+      senders.current = { cursor: null, drag: null };
       channelRef.current = null;
       setConnected(false);
       store.cursors.clear();
@@ -415,20 +390,6 @@ export function LiveRoomProvider({
       // The last frame of a drag (active:false = where it landed) must not
       // wait out the throttle window.
       if (!drag.active) sender.flush();
-    },
-    sendGame: (payload) => {
-      const sender = senders.current.game;
-      if (!sender) return;
-      sender.push({ tabId, memberId, ...payload });
-      // Start/end frames are one-shot signals — never let them sit in the
-      // throttle buffer waiting for a frame that won't come.
-      if (payload.type === "start" || payload.type === "end") sender.flush();
-    },
-    subscribeGame: (onMessage) => {
-      gameListeners.current.add(onMessage);
-      return () => {
-        gameListeners.current.delete(onMessage);
-      };
     },
     sendEdit: (action) => {
       const channel = channelRef.current;
