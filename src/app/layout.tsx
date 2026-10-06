@@ -16,7 +16,10 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: "Groupy — Trabajo en grupo, en claro",
   description:
-    "Cinco preguntas y Groupy convierte vuestro trabajo en grupo en un plan repartido, con el progreso registrado tarea a tarea.",
+    "Groupy convierte vuestro trabajo en grupo en un plan repartido: tareas, bloques y un mapa compartido por código, con el progreso registrado tarea a tarea.",
+  applicationName: "Groupy",
+  appleWebApp: { title: "Groupy", statusBarStyle: "default" },
+  formatDetection: { telephone: false },
 };
 
 // Phones: fit the device, keep the app chrome under the notch-safe area, and
