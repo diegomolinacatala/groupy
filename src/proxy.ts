@@ -5,8 +5,10 @@ export async function proxy(request: NextRequest) {
   return await updateSession(request);
 }
 
+// Only the routes that talk to Supabase refresh the session: cloud projects
+// and class codes (/p), the teacher area (/profesor) and the wizard's cloud
+// save (/setup). The landing and the local demo (/dashboard) skip the auth
+// round-trip entirely, so they load instantly even if the backend is slow.
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  matcher: ["/p/:path*", "/profesor/:path*", "/setup"],
 };

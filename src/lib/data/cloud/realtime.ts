@@ -5,7 +5,7 @@ import type {
   RealtimeChannel,
   RealtimePostgresChangesPayload,
 } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/client";
+import { loadBrowserClient, type BrowserClient } from "@/lib/supabase/lazy-client";
 import type { Tables } from "@/lib/supabase/database.types";
 import type { ProjectAction } from "../reducer";
 import {
@@ -43,7 +43,7 @@ async function fetchSnapshot(
   projectId: string,
   groupId: string,
 ): Promise<ProjectAction | null> {
-  const supabase = createClient();
+  const supabase = await loadBrowserClient();
   const [projectRes, groupRes, membersRes, tasksRes] = await Promise.all([
     supabase.from("projects").select("*").eq("id", projectId).single(),
     supabase.from("groups").select("*").eq("id", groupId).single(),
@@ -90,7 +90,7 @@ export function useCloudRealtime({
     // Local (demo) dashboards call this hook with empty ids — no-op.
     if (!projectId || !groupId) return;
 
-    const supabase = createClient();
+    let supabase: BrowserClient | null = null;
     let channel: RealtimeChannel | null = null;
     let cancelled = false;
     // Set after the FIRST successful subscribe: a later re-subscribe means a
@@ -169,10 +169,13 @@ export function useCloudRealtime({
       // Realtime authenticates with the session token; make sure the cookie
       // session is loaded before joining, or RLS would see an anonymous
       // visitor and deliver nothing — silently.
-      await supabase.auth.getSession();
+      const client = await loadBrowserClient();
+      if (cancelled) return;
+      supabase = client;
+      await client.auth.getSession();
       if (cancelled) return;
 
-      channel = supabase
+      channel = client
         .channel(`db:${groupId}`)
         .on<Tables<"tasks">>(
           "postgres_changes",
@@ -261,7 +264,7 @@ export function useCloudRealtime({
 
     return () => {
       cancelled = true;
-      if (channel) void supabase.removeChannel(channel);
+      if (channel && supabase) void supabase.removeChannel(channel);
     };
   }, [projectId, groupId, tabId]);
 }

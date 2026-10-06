@@ -6,6 +6,7 @@ import {
   type ProjectPreview,
   type TemplatePreview,
 } from "./schemas";
+import { friendlyCloudError } from "./errors";
 
 // Server-side loader for /p/[code]. ONE code box serves both worlds: a class
 // (template) code lands on the template page, a group code on the who-are-you
@@ -35,7 +36,7 @@ export async function loadCloudProject(
   const { data, error } = await supabase.rpc("get_project_by_code", {
     p_code: code,
   });
-  if (error) return { state: "error", message: error.message };
+  if (error) return { state: "error", message: friendlyCloudError(error.message) };
   if (data === null) return { state: "not_found" };
 
   const lookup = codeLookupSchema.safeParse(data);
@@ -62,7 +63,7 @@ export async function loadCloudProject(
       .limit(1),
   ]);
   if (projectRes.error) {
-    return { state: "error", message: projectRes.error.message };
+    return { state: "error", message: friendlyCloudError(projectRes.error.message) };
   }
   const group = groupRes.data?.[0];
   if (!group) {
@@ -84,10 +85,10 @@ export async function loadCloudProject(
       .order("created_at"),
   ]);
   if (membersRes.error) {
-    return { state: "error", message: membersRes.error.message };
+    return { state: "error", message: friendlyCloudError(membersRes.error.message) };
   }
   if (tasksRes.error) {
-    return { state: "error", message: tasksRes.error.message };
+    return { state: "error", message: friendlyCloudError(tasksRes.error.message) };
   }
 
   return {

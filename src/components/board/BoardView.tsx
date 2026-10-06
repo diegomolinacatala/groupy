@@ -4,12 +4,10 @@ import { useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useDragSensors } from "@/lib/ui/dnd";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
 import { lockedModuleIds } from "@/lib/data/flow";
@@ -26,9 +24,7 @@ export function BoardView() {
   const { openModule } = useDashboardUi();
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
+  const sensors = useDragSensors();
 
   const byStatus = useMemo(() => {
     const map: Record<ModuleStatus, ProjectModule[]> = {

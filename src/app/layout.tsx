@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Geist } from "next/font/google";
 import "./globals.css";
 
@@ -17,6 +17,18 @@ export const metadata: Metadata = {
   title: "Groupy — Trabajo en grupo, en claro",
   description:
     "Cinco preguntas y Groupy convierte vuestro trabajo en grupo en un plan repartido, con el progreso registrado tarea a tarea.",
+};
+
+// Phones: fit the device, keep the app chrome under the notch-safe area, and
+// stop iOS from auto-zooming into every <input> under 16px (pinch-zoom still
+// works on iOS). Android's keyboard resizes the layout instead of covering it.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
+  themeColor: "#f6f4ef",
 };
 
 export default function RootLayout({

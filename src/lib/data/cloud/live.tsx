@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/client";
+import { loadBrowserClient, type BrowserClient } from "@/lib/supabase/lazy-client";
 import type { RemoteAction } from "../reducer";
 
 // The EPHEMERAL layer of a shared dashboard: who is connected (presence),
@@ -203,162 +203,174 @@ export function LiveRoomProvider({
       for (const listener of store.listeners) listener();
     };
 
-    const supabase = createClient();
-    const channel = supabase.channel(`live:${groupId}`, {
-      // self:false — our own tab never needs its own cursor back.
-      config: { broadcast: { self: false }, presence: { key: tabId } },
-    });
-    channelRef.current = channel;
+    // Everything below runs once the (lazily loaded) client is here.
+    const joinRoom = (supabase: BrowserClient) => {
+      const channel = supabase.channel(`live:${groupId}`, {
+        // self:false — our own tab never needs its own cursor back.
+        config: { broadcast: { self: false }, presence: { key: tabId } },
+      });
+      channelRef.current = channel;
 
-    const rawSend = (
-      event: "cursor" | "drag",
-      payload: Record<string, unknown>,
-    ) => {
-      // Fire-and-forget: a dropped frame is invisible, the next one corrects.
-      void channel.send({ type: "broadcast", event, payload });
-    };
-    // Local handles for the cleanup below (the ref may be repointed by then).
-    const cursorSender = makeThrottled<Record<string, unknown>>(
-      SEND_INTERVAL_MS,
-      (payload) => rawSend("cursor", payload),
-    );
-    const dragSender = makeThrottled<Record<string, unknown>>(
-      SEND_INTERVAL_MS,
-      (payload) => rawSend("drag", payload),
-    );
-    senders.current = { cursor: cursorSender, drag: dragSender };
+      const rawSend = (
+        event: "cursor" | "drag",
+        payload: Record<string, unknown>,
+      ) => {
+        // Fire-and-forget: a dropped frame is invisible, the next one corrects.
+        void channel.send({ type: "broadcast", event, payload });
+      };
+      // Local handles for the cleanup below (the ref may be repointed by then).
+      const cursorSender = makeThrottled<Record<string, unknown>>(
+        SEND_INTERVAL_MS,
+        (payload) => rawSend("cursor", payload),
+      );
+      const dragSender = makeThrottled<Record<string, unknown>>(
+        SEND_INTERVAL_MS,
+        (payload) => rawSend("drag", payload),
+      );
+      senders.current = { cursor: cursorSender, drag: dragSender };
 
-    channel.on("broadcast", { event: "cursor" }, ({ payload }) => {
-      const p = payload as Partial<LiveCursor> & { gone?: boolean };
-      if (typeof p?.tabId !== "string") return;
-      if (p.gone) {
-        if (!store.cursors.delete(p.tabId)) return;
-      } else {
+      channel.on("broadcast", { event: "cursor" }, ({ payload }) => {
+        const p = payload as Partial<LiveCursor> & { gone?: boolean };
+        if (typeof p?.tabId !== "string") return;
+        if (p.gone) {
+          if (!store.cursors.delete(p.tabId)) return;
+        } else {
+          if (
+            typeof p.memberId !== "string" ||
+            typeof p.blockId !== "string" ||
+            typeof p.fx !== "number" ||
+            typeof p.fy !== "number"
+          ) {
+            return;
+          }
+          store.cursors.set(p.tabId, {
+            tabId: p.tabId,
+            memberId: p.memberId,
+            blockId: p.blockId,
+            fx: p.fx,
+            fy: p.fy,
+            ts: Date.now(),
+          });
+        }
+        notify();
+      });
+
+      channel.on("broadcast", { event: "drag" }, ({ payload }) => {
+        const p = payload as Partial<LiveDrag>;
         if (
+          typeof p?.tabId !== "string" ||
           typeof p.memberId !== "string" ||
+          typeof p.taskId !== "string" ||
           typeof p.blockId !== "string" ||
           typeof p.fx !== "number" ||
           typeof p.fy !== "number"
         ) {
           return;
         }
-        store.cursors.set(p.tabId, {
+        store.drags.set(p.taskId, {
           tabId: p.tabId,
           memberId: p.memberId,
+          taskId: p.taskId,
           blockId: p.blockId,
           fx: p.fx,
           fy: p.fy,
+          active: p.active === true,
           ts: Date.now(),
         });
-      }
-      notify();
-    });
-
-    channel.on("broadcast", { event: "drag" }, ({ payload }) => {
-      const p = payload as Partial<LiveDrag>;
-      if (
-        typeof p?.tabId !== "string" ||
-        typeof p.memberId !== "string" ||
-        typeof p.taskId !== "string" ||
-        typeof p.blockId !== "string" ||
-        typeof p.fx !== "number" ||
-        typeof p.fy !== "number"
-      ) {
-        return;
-      }
-      store.drags.set(p.taskId, {
-        tabId: p.tabId,
-        memberId: p.memberId,
-        taskId: p.taskId,
-        blockId: p.blockId,
-        fx: p.fx,
-        fy: p.fy,
-        active: p.active === true,
-        ts: Date.now(),
+        notify();
       });
-      notify();
-    });
 
-    channel.on("broadcast", { event: "edit" }, ({ payload }) => {
-      // Only well-formed remote actions are forwarded; the reducer and its
-      // per-action guards do the rest. self:false means this never fires for
-      // our own edits.
-      const p = payload as Partial<RemoteAction> | undefined;
-      if (!p || typeof p.type !== "string" || !p.type.startsWith("APPLY_REMOTE_")) {
-        return;
-      }
-      for (const listener of editListeners.current) listener(p as RemoteAction);
-    });
+      channel.on("broadcast", { event: "edit" }, ({ payload }) => {
+        // Only well-formed remote actions are forwarded; the reducer and its
+        // per-action guards do the rest. self:false means this never fires for
+        // our own edits.
+        const p = payload as Partial<RemoteAction> | undefined;
+        if (!p || typeof p.type !== "string" || !p.type.startsWith("APPLY_REMOTE_")) {
+          return;
+        }
+        for (const listener of editListeners.current) listener(p as RemoteAction);
+      });
 
-    channel.on("presence", { event: "sync" }, () => {
-      const state = channel.presenceState<{ memberId: string }>();
-      const members = new Set<string>();
-      const tabs = new Set<string>();
-      for (const [key, metas] of Object.entries(state)) {
-        tabs.add(key);
-        for (const meta of metas) {
-          if (typeof meta.memberId === "string") members.add(meta.memberId);
+      channel.on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState<{ memberId: string }>();
+        const members = new Set<string>();
+        const tabs = new Set<string>();
+        for (const [key, metas] of Object.entries(state)) {
+          tabs.add(key);
+          for (const meta of metas) {
+            if (typeof meta.memberId === "string") members.add(meta.memberId);
+          }
         }
-      }
-      setOnlineMemberIds(members);
-      // A tab that left takes its cursor and any drag it was doing with it.
-      let dirty = false;
-      for (const key of store.cursors.keys()) {
-        if (!tabs.has(key)) {
-          store.cursors.delete(key);
-          dirty = true;
+        setOnlineMemberIds(members);
+        // A tab that left takes its cursor and any drag it was doing with it.
+        let dirty = false;
+        for (const key of store.cursors.keys()) {
+          if (!tabs.has(key)) {
+            store.cursors.delete(key);
+            dirty = true;
+          }
         }
-      }
-      for (const [taskId, drag] of store.drags) {
-        if (!tabs.has(drag.tabId)) {
-          store.drags.delete(taskId);
-          dirty = true;
+        for (const [taskId, drag] of store.drags) {
+          if (!tabs.has(drag.tabId)) {
+            store.drags.delete(taskId);
+            dirty = true;
+          }
         }
-      }
-      if (dirty) notify();
-    });
+        if (dirty) notify();
+      });
 
-    channel.subscribe((status) => {
-      if (status === "SUBSCRIBED") {
-        setConnected(true);
-        void channel.track({ memberId });
-      } else {
+      channel.subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setConnected(true);
+          void channel.track({ memberId });
+        } else {
+          setConnected(false);
+        }
+      });
+
+      // Belt-and-braces prune: crashed tabs whose presence hasn't expired yet,
+      // and finished drags nobody cleaned up.
+      const pruner = setInterval(() => {
+        const now = Date.now();
+        let dirty = false;
+        for (const [key, cursor] of store.cursors) {
+          if (now - cursor.ts > CURSOR_TTL_MS) {
+            store.cursors.delete(key);
+            dirty = true;
+          }
+        }
+        for (const [taskId, drag] of store.drags) {
+          const ttl = drag.active ? CURSOR_TTL_MS : DRAG_LINGER_MS;
+          if (now - drag.ts > ttl) {
+            store.drags.delete(taskId);
+            dirty = true;
+          }
+        }
+        if (dirty) notify();
+      }, 1000);
+
+      return () => {
+        clearInterval(pruner);
+        cursorSender.cancel();
+        dragSender.cancel();
+        senders.current = { cursor: null, drag: null };
+        channelRef.current = null;
         setConnected(false);
-      }
+        store.cursors.clear();
+        store.drags.clear();
+        notify();
+        void supabase.removeChannel(channel);
+      };
+    };
+
+    let disposed = false;
+    let leaveRoom: (() => void) | null = null;
+    void loadBrowserClient().then((supabase) => {
+      if (!disposed) leaveRoom = joinRoom(supabase);
     });
-
-    // Belt-and-braces prune: crashed tabs whose presence hasn't expired yet,
-    // and finished drags nobody cleaned up.
-    const pruner = setInterval(() => {
-      const now = Date.now();
-      let dirty = false;
-      for (const [key, cursor] of store.cursors) {
-        if (now - cursor.ts > CURSOR_TTL_MS) {
-          store.cursors.delete(key);
-          dirty = true;
-        }
-      }
-      for (const [taskId, drag] of store.drags) {
-        const ttl = drag.active ? CURSOR_TTL_MS : DRAG_LINGER_MS;
-        if (now - drag.ts > ttl) {
-          store.drags.delete(taskId);
-          dirty = true;
-        }
-      }
-      if (dirty) notify();
-    }, 1000);
-
     return () => {
-      clearInterval(pruner);
-      cursorSender.cancel();
-      dragSender.cancel();
-      senders.current = { cursor: null, drag: null };
-      channelRef.current = null;
-      setConnected(false);
-      store.cursors.clear();
-      store.drags.clear();
-      notify();
-      void supabase.removeChannel(channel);
+      disposed = true;
+      leaveRoom?.();
     };
   }, [groupId, memberId, tabId]);
 

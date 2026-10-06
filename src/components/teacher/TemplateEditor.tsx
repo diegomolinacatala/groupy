@@ -29,7 +29,7 @@ export function TemplateEditor() {
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-canvas">
+    <div className="flex h-dvh flex-col overflow-hidden bg-canvas">
       <header className="shrink-0 border-b border-line bg-surface/80 backdrop-blur">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 md:px-6">
           <Link

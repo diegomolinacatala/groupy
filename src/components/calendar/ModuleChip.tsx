@@ -89,7 +89,7 @@ export function ModuleChip({ module, members, locked, onOpen }: ModuleChipProps)
       {...attributes}
       onClick={onOpen}
       className={cn(
-        "block w-full cursor-grab touch-none rounded-md transition-opacity active:cursor-grabbing",
+        "drag-item block w-full cursor-grab rounded-md transition-opacity active:cursor-grabbing",
         isDragging && "opacity-30",
       )}
     >

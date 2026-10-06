@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Project } from "../types";
 import { rowsToProject } from "./mapping";
 import { teacherOverviewSchema, type TeacherTemplate } from "./schemas";
+import { friendlyCloudError } from "./errors";
 
 // Server-side loaders for the teacher surfaces (/profesor). Reads go through
 // the teacher's own RLS view: template rows are visible because they own
@@ -15,7 +16,7 @@ export type TeacherOverviewResult =
 export async function loadTeacherOverview(): Promise<TeacherOverviewResult> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("get_teacher_overview");
-  if (error) return { state: "error", message: error.message };
+  if (error) return { state: "error", message: friendlyCloudError(error.message) };
   // The RPC answers null for anonymous / signed-out callers.
   if (data === null) return { state: "unauthenticated" };
 
@@ -50,7 +51,7 @@ export async function loadTemplateEditor(
     .eq("is_template", true)
     .maybeSingle();
   if (projectRes.error) {
-    return { state: "error", message: projectRes.error.message };
+    return { state: "error", message: friendlyCloudError(projectRes.error.message) };
   }
   // RLS hides other teachers' templates → same "not found" as a bad id.
   if (!projectRes.data) return { state: "not_found" };
@@ -62,7 +63,7 @@ export async function loadTemplateEditor(
     .order("created_at")
     .limit(1);
   if (groupRes.error) {
-    return { state: "error", message: groupRes.error.message };
+    return { state: "error", message: friendlyCloudError(groupRes.error.message) };
   }
   const group = groupRes.data[0];
   if (!group) {
@@ -76,7 +77,7 @@ export async function loadTemplateEditor(
     .order("sort_order")
     .order("created_at");
   if (tasksRes.error) {
-    return { state: "error", message: tasksRes.error.message };
+    return { state: "error", message: friendlyCloudError(tasksRes.error.message) };
   }
 
   return {

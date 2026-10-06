@@ -181,7 +181,7 @@ export function SortableTaskChip({
       onClick={onOpen}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "group relative block w-fit max-w-full cursor-grab touch-none select-none active:cursor-grabbing",
+        "group relative block w-fit max-w-full drag-item cursor-grab active:cursor-grabbing",
         isDragging && "opacity-30",
       )}
     >

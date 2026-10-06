@@ -4,13 +4,11 @@ import { Fragment, useState } from "react";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
   pointerWithin,
-  useSensor,
-  useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useDragSensors } from "@/lib/ui/dnd";
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -67,9 +65,7 @@ export function MapView() {
     null,
   );
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-  );
+  const sensors = useDragSensors(8);
 
   const flow = buildProjectFlow(project);
   const blocks = orderedBlocks(project);
@@ -416,7 +412,7 @@ function Diamond({
         onClick={onSelect}
         aria-label={`Abrir el bloque ${block.name || "sin nombre"}`}
         title={block.name || "Sin nombre"}
-        className="group relative grid h-11 w-11 touch-none place-items-center outline-none"
+        className="drag-item group relative grid h-11 w-11 place-items-center outline-none"
       >
         <span
           aria-hidden

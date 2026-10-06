@@ -4,12 +4,10 @@ import { useState, type CSSProperties } from "react";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useDragSensors } from "@/lib/ui/dnd";
 import {
   SortableContext,
   useSortable,
@@ -87,9 +85,7 @@ export function PersonalView() {
   const { openModule, setView } = useDashboardUi();
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
+  const sensors = useDragSensors();
 
   const me = project.members.find((m) => m.id === currentMemberId) ?? null;
 
@@ -435,7 +431,7 @@ function SortableTask({
       {...listeners}
       onClick={onOpen}
       className={cn(
-        "relative cursor-grab touch-none active:cursor-grabbing",
+        "drag-item relative cursor-grab active:cursor-grabbing",
         isDragging && "opacity-30",
       )}
     >

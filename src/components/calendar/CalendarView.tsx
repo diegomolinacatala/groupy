@@ -4,12 +4,10 @@ import { useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useDragSensors } from "@/lib/ui/dnd";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useProject } from "@/lib/data/ProjectProvider";
 import { useDashboardUi } from "@/lib/ui/dashboard-ui";
@@ -34,9 +32,7 @@ export function CalendarView() {
   const { year, month, setMonth, goToToday, openModule } = useDashboardUi();
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
+  const sensors = useDragSensors();
 
   const weeks = useMemo(() => getMonthMatrix(year, month), [year, month]);
   const today = todayISO();

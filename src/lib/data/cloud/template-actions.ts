@@ -5,6 +5,7 @@ import {
   deleteTemplateInputSchema,
   rpcCreateTemplateResultSchema,
 } from "./schemas";
+import { friendlyCloudError } from "./errors";
 
 // Teacher-only template mutations. Editing the template's CONTENT (tasks,
 // blocks, title, dates) reuses the ordinary dashboard actions — a template is
@@ -20,7 +21,7 @@ export async function createTeacherTemplate(): Promise<
     if (error.message.includes("TEACHER_ACCOUNT_REQUIRED")) {
       return { ok: false, error: "Necesitas una cuenta de profesor." };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: friendlyCloudError(error.message) };
   }
 
   const result = rpcCreateTemplateResultSchema.safeParse(data);
@@ -51,7 +52,7 @@ export async function deleteTeacherTemplate(
     .eq("id", parsed.data.templateId)
     .eq("is_template", true)
     .select("id");
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyCloudError(error.message) };
   if (!data?.length) {
     return { ok: false, error: "Sin permiso para borrar esta plantilla." };
   }

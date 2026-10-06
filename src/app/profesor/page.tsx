@@ -8,14 +8,22 @@ import { TeacherHome } from "@/components/teacher/TeacherHome";
 // the access screen; with one, the templates home. Students' anonymous
 // sessions do NOT count as signed in here.
 
-export default async function TeacherPage() {
+export default async function TeacherPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ confirmado?: string }>;
+}) {
+  const { confirmado } = await searchParams;
+  const notice =
+    confirmado === "1" ? "confirmed" : confirmado === "error" ? "link_error" : null;
+
   const teacher = await getTeacherUser();
-  if (!teacher) return <TeacherAccess />;
+  if (!teacher) return <TeacherAccess notice={notice} />;
 
   const overview = await loadTeacherOverview();
   // The RPC answers null when the session isn't a real account; getTeacherUser
   // already filtered that, so this only fires on races (e.g. just signed out).
-  if (overview.state === "unauthenticated") return <TeacherAccess />;
+  if (overview.state === "unauthenticated") return <TeacherAccess notice={notice} />;
 
   if (overview.state === "error") {
     return (

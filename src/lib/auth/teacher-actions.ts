@@ -1,7 +1,9 @@
 "use server";
 
+import { headers } from "next/headers";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { friendlyCloudError } from "@/lib/data/cloud/errors";
 
 // Teacher auth (email + password — locked decision; magic link / Google are
 // deferred). Same contract as the rest of the cloud actions: expected
@@ -31,9 +33,13 @@ export async function signUpTeacher(input: unknown): Promise<AuthResult> {
   }
 
   const supabase = await createClient();
+  // The confirmation link comes back to THIS deployment (must also be listed
+  // under Auth → URL Configuration → Redirect URLs in Supabase).
+  const origin = (await headers()).get("origin");
   const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
+    options: origin ? { emailRedirectTo: `${origin}/auth/confirm` } : undefined,
   });
   if (error) return { ok: false, error: humanizeAuthError(error.message) };
 
@@ -76,5 +82,5 @@ function humanizeAuthError(message: string): string {
   if (message.toLowerCase().includes("rate limit")) {
     return "Demasiados intentos. Espera un momento y vuelve a probar.";
   }
-  return message;
+  return friendlyCloudError(message);
 }

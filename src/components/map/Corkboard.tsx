@@ -1590,7 +1590,7 @@ function CorkNode({
         "group/node absolute rounded-lg border border-line border-l-[3px] bg-surface text-left shadow-card transition-[box-shadow,opacity,transform] duration-300 ease-[var(--ease-spring)]",
         ghost
           ? "cursor-pointer opacity-25 hover:opacity-60"
-          : "cursor-grab touch-none active:cursor-grabbing",
+          : "drag-item cursor-grab active:cursor-grabbing",
         // The origin hides fully while its card travels (the overlay is the
         // visible one) — no faint "transparent task" left behind. Same rule
         // when the card travels in a TEAMMATE's hand.

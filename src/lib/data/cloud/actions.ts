@@ -20,6 +20,7 @@ import {
   upsertTaskInputSchema,
 } from "./schemas";
 import { blockToTaskRow, moduleToTaskRow, toRpcPayload } from "./mapping";
+import { friendlyCloudError } from "./errors";
 
 // Server Functions for the cloud slice. Expected failures are RETURN VALUES
 // ({ ok: false, error }), never throws — the mirror logs them and the local
@@ -73,7 +74,7 @@ export async function createCloudProject(
   const { data, error } = await supabase.rpc("create_project_with_group", {
     payload: toRpcPayload(parsed.data),
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyCloudError(error.message) };
 
   const result = rpcCreateResultSchema.safeParse(data);
   if (!result.success) {
@@ -121,7 +122,7 @@ function humanizeClaimError(message: string): string {
   if (message.includes("TEACHER_CANNOT_CLAIM")) {
     return "Estás dentro con una cuenta de profesor: los profesores no pueden ocupar el sitio de un alumno.";
   }
-  return message;
+  return friendlyCloudError(message);
 }
 
 /**
@@ -157,7 +158,7 @@ export async function createGroupFromTemplate(
     if (error.message.includes("TEMPLATE_NOT_FOUND")) {
       return { ok: false, error: "Ese código de clase ya no existe." };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: friendlyCloudError(error.message) };
   }
 
   const result = rpcCreateGroupResultSchema.safeParse(data);
@@ -197,7 +198,7 @@ export async function updateCloudProject(
     .update(row)
     .eq("id", parsed.data.projectId)
     .select("id");
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyCloudError(error.message) };
   if (!data?.length) {
     return { ok: false, error: "Sin permiso para editar este proyecto." };
   }
@@ -235,7 +236,7 @@ export async function setCloudMemberStrengths(
     .select("strengths")
     .eq("id", groupId)
     .single();
-  if (groupRes.error) return { ok: false, error: groupRes.error.message };
+  if (groupRes.error) return { ok: false, error: friendlyCloudError(groupRes.error.message) };
 
   const current = groupRes.data.strengths;
   const record: { [key: string]: Json | undefined } =
@@ -249,7 +250,7 @@ export async function setCloudMemberStrengths(
     .update({ strengths: record })
     .eq("id", groupId)
     .select("id");
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyCloudError(error.message) };
   if (!data?.length) {
     return { ok: false, error: "Sin permiso para editar este grupo." };
   }
@@ -273,7 +274,7 @@ export async function upsertCloudTask(
       ),
     )
     .select("id");
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyCloudError(error.message) };
   if (!data?.length) {
     return { ok: false, error: "Sin permiso para editar esta tarea." };
   }
@@ -294,7 +295,7 @@ export async function upsertCloudBlock(
       blockToTaskRow(parsed.data.groupId, parsed.data.block, parsed.data.origin),
     )
     .select("id");
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyCloudError(error.message) };
   if (!data?.length) {
     return { ok: false, error: "Sin permiso para editar este bloque." };
   }
@@ -313,7 +314,7 @@ export async function deleteCloudTask(
     .delete()
     .eq("id", parsed.data.taskId)
     .eq("group_id", parsed.data.groupId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyCloudError(error.message) };
   return { ok: true };
 }
 
@@ -339,7 +340,7 @@ export async function addCloudMember(
       is_coordinator: member.isCoordinator,
     })
     .select("id");
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyCloudError(error.message) };
   if (!data?.length) {
     return { ok: false, error: "Sin permiso para añadir miembros." };
   }
@@ -366,7 +367,7 @@ export async function updateCloudMember(
     .eq("id", member.id)
     .eq("group_id", groupId)
     .select("id");
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyCloudError(error.message) };
   if (!data?.length) {
     return { ok: false, error: "Sin permiso para editar este miembro." };
   }
@@ -386,7 +387,7 @@ export async function deleteCloudMember(
     .delete()
     .eq("id", memberId)
     .eq("group_id", groupId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyCloudError(error.message) };
 
   // Mirror the reducer's cascade: detach the member from every task that
   // referenced them. Errors here are non-fatal (worst case a dangling uuid

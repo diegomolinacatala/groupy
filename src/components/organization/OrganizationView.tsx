@@ -4,13 +4,11 @@ import { useState } from "react";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
   useDroppable,
-  useSensor,
-  useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useDragSensors } from "@/lib/ui/dnd";
 import {
   SortableContext,
   rectSortingStrategy,
@@ -102,9 +100,7 @@ export function OrganizationView() {
   const { openModule } = useDashboardUi();
   const [active, setActive] = useState<ChipDragData | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
+  const sensors = useDragSensors();
 
   const unassigned = project.modules
     .filter((m) => m.assigneeIds.length === 0)

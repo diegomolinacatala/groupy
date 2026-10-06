@@ -17,7 +17,16 @@ type AccessMode = "signin" | "signup";
 const inputClass =
   "h-12 w-full rounded-xl border border-line bg-surface px-4 text-[15px] text-ink outline-none transition-colors placeholder:text-muted-2 focus:border-ink";
 
-export function TeacherAccess() {
+/** Shown after the sign-up confirmation link lands (see /auth/confirm). */
+export type AccessNotice = "confirmed" | "link_error" | null;
+
+const NOTICE_COPY: Record<Exclude<AccessNotice, null>, string> = {
+  confirmed: "Correo confirmado. Ya puedes entrar con tu contraseña.",
+  link_error:
+    "El enlace ha caducado o ya se usó. Prueba a entrar; si no puedes, crea la cuenta de nuevo.",
+};
+
+export function TeacherAccess({ notice = null }: { notice?: AccessNotice }) {
   const router = useRouter();
   const [mode, setMode] = useState<AccessMode>("signin");
   const [email, setEmail] = useState("");
@@ -94,6 +103,18 @@ export function TeacherAccess() {
           entra sin cuentas y se reparte el trabajo. Tú no verás su trabajo en
           curso — solo el informe final.
         </p>
+
+        {notice && (
+          <p
+            className={
+              notice === "confirmed"
+                ? "mt-6 rounded-lg bg-done-soft px-3 py-2 text-sm text-done"
+                : "mt-6 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger"
+            }
+          >
+            {NOTICE_COPY[notice]}
+          </p>
+        )}
 
         <div className="mt-8">
           <Segmented

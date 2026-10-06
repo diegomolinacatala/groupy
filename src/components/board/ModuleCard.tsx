@@ -111,7 +111,7 @@ export function ModuleCard({ module, members, locked, onOpen }: ModuleCardProps)
       {...attributes}
       onClick={onOpen}
       className={cn(
-        "block w-full cursor-grab touch-none active:cursor-grabbing",
+        "drag-item block w-full cursor-grab active:cursor-grabbing",
         isDragging && "opacity-30",
       )}
     >
