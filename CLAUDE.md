@@ -43,7 +43,64 @@ Supabase Anonymous Auth creates a persistent per-device session; the student onl
 `display_name` + `email` as profile data on their `group_members` row. RLS then works via
 `auth.uid()` for both roles — no parallel token system.
 
-## Current state (updated 2026-07-06: teacher templates + teacher role shipped)
+## Current state (updated 2026-10-06: pilot hardening — report delivery, device switch, mobile/perf)
+
+### Pilot hardening — 2026-10-06 (read this first)
+
+Ops runbook: `docs/PUESTA-EN-MARCHA.md`; teacher-facing guide: `docs/GUIA-PROFESOR.md`.
+
+- **Supabase was found PAUSED** (free tier, DNS for the ref doesn't resolve). The local
+  Supabase CLI is now logged into an account that doesn't own GROUPY — the partner owns
+  it. Restoring + `supabase db push` + Auth settings are dashboard tasks (runbook §1–3).
+  A **daily Vercel cron** (`vercel.json` → `/api/keepalive`, one read-only preview RPC,
+  honors `CRON_SECRET`) now keeps it awake.
+- **Two migrations NOT yet pushed** (written 2026-10-06, only tested locally):
+  `20261006120000_report_delivery.sql` (`submit_group_report(p_group_id)`) and
+  `20261006130000_release_seat.sql` (`release_member(p_member_id)`). Both only add
+  functions. The app degrades with a clear message if they're missing (PGRST202).
+- **`npm run test:db`** (`supabase/tests/db.test.mjs`): every migration on in-memory
+  Postgres (PGlite, no Docker) with stubbed `auth.uid()/auth.jwt()/auth.users` and
+  anon/authenticated roles, plus 40 RLS/RPC checks. Run before every `db push`.
+- **Report delivery (closes the teacher loop)**: the Informe tab of a cloud group
+  spawned from a class code shows "Entregar al profesor". The RPC snapshots the group's
+  REAL rows (project/group/members minus `auth_uid`/tasks) into `reports` (upsert —
+  latest wins) and sets the project `in_review`; never a client payload. Wizard projects
+  store their anonymous creator in `teacher_id`, so the guard requires a NON-anonymous
+  `auth.users` owner (`NO_TEACHER` otherwise). Teacher home shows "Ver informe" per
+  delivered group (`loadTeacherDeliveries`: reports → projects.join_code, existing
+  `reports_teacher_select` policy); `/profesor/informe/[code]` rebuilds the Project via
+  `rowsToProject` and renders the shared `ReportDocument` as of the delivery day
+  (`buildReport(project, generatedAt)`), with print-to-PDF.
+- **Device switch**: a seat binds ONE device. `release_member` lets anyone already
+  inside the group (teammate, or self from the old device) null a seat's `auth_uid`;
+  the student re-claims on the new device. Outsiders/teachers get `NOT_A_MEMBER`. UI:
+  identity popover "Usar otro dispositivo", "Liberar acceso" on teammates' cards
+  (cloud only), hint on WhoAreYouScreen.
+- **Touch**: `useDragSensors` (`src/lib/ui/dnd.ts`) = MouseSensor (distance) +
+  TouchSensor (200ms hold, 8px tolerance) on EVERY dnd surface; draggables use the
+  `.drag-item` utility (touch-action manipulation, no iOS callout/selection) instead of
+  `touch-none` — before, phones couldn't scroll over task cards. Keep `touch-none` only
+  on custom pointer handles (resize corner, dependency ports).
+- **Mobile**: `viewport` export (maximumScale 1 = no iOS input auto-zoom,
+  viewportFit cover, interactiveWidget resizes-content); shells use `h-dvh`; map date
+  labels stagger into lanes (`layoutDueLabels`); diamond rail uses
+  `justify-center-safe` (overflowing rail no longer clips its first block).
+- **Perf**: dashboard JS 186→110 KB gz. Map/Calendar/Board/Team/Report are
+  `next/dynamic` chunks prefetched on idle (DashboardShell); the Supabase browser client
+  is loaded via `loadBrowserClient()` (`src/lib/supabase/lazy-client.ts`) so the local
+  demo never ships it. `src/proxy.ts` matcher = `/p/:path*`, `/profesor/:path*`,
+  `/setup` only (no auth round-trip on `/` or `/dashboard`).
+- **Resilience**: server Supabase clients use `fetchWithTimeout` (10s); network-ish
+  errors map to Spanish via `friendlyCloudError`; `loading.tsx` on server routes;
+  Spanish `app/error.tsx` + `app/not-found.tsx`. Teacher sign-up passes
+  `emailRedirectTo: <origin>/auth/confirm` (route exchanges the code; falls back to
+  `/profesor?confirmado=1`). NOTE: Supabase's default SMTP only mails org members —
+  runbook recommends disabling "Confirm email" for the pilot.
+- **Removed**: the air-hockey easter egg (AirHockey.tsx, the "game" broadcast).
+- Next.js **16.4.0** (16.3.5 had a critical next/og RCE advisory); app icon
+  (`icon.svg` + generated `apple-icon`) + `manifest.ts`.
+
+### As-built baseline (2026-07-06)
 
 Two layers exist side by side:
 
@@ -285,7 +342,10 @@ spawn themselves → teacher sees roster only.
 | Claim a seat (`claim_member`) | ✅ | ❌ `TEACHER_CANNOT_CLAIM` |
 | Live group work (tasks/checklists/statuses/log) | ✅ own group only | ❌ NEVER (no policy) |
 | Group roster (names + claimed flags) | ✅ via code preview | ✅ via overview/preview — never emails |
-| Student emails | ✅ own group | ❌ live; ✅ only in the future closing report |
+| Student emails | ✅ own group | ❌ live; ✅ only inside a delivered report |
+| Deliver the report (`submit_group_report`) | ✅ claimed member of a class-code group | ❌ `NOT_A_MEMBER` |
+| Read delivered reports | ✅ own group's | ✅ groups spawned from own templates |
+| Free a seat (`release_member`) | ✅ anyone inside the group | ❌ `NOT_A_MEMBER` |
 | Delete | own group's tasks/members | own templates (spawned groups keep working) |
 
 ### Informe para el profesor — shipped 2026-07-05
@@ -378,7 +438,7 @@ to a `group_members` row. Report `payload` is an immutable snapshot at close.
 | projects (groups) | ✅ where participating | ✅ own rows (meta only — title/dates/status) |
 | groups / group_members / tasks / activity_log | ✅ own group | ❌ **never live** (template task rows are the one teacher-scoped exception) |
 | peer_evaluations | ✅ writes own | ❌ |
-| reports | ✅ own group's | ✅ **only window into the work** |
+| reports | ✅ own group's (written ONLY via `submit_group_report`) | ✅ **only window into the work** |
 
 Extra guard: `claim_member` refuses non-anonymous sessions, so a signed-in teacher can
 never become a group member and inherit student-level reads.
@@ -389,8 +449,8 @@ Built: `createTeacherTemplate` / `deleteTeacherTemplate` (template-actions.ts) �
 `signUpTeacher` / `signInTeacher` / `signOutTeacher` (auth) · `createCloudProject` ·
 `createGroupFromTemplate` · `claimCloudMember` · `updateCloudProject` ·
 `upsertCloudTask` / `upsertCloudBlock` / `deleteCloudTask` · member CRUD ·
-`setCloudMemberStrengths`. Pending: `logCheckin` · `submitPeerEval` ·
-`closeProject → generateReport` · `getReport`.
+`setCloudMemberStrengths` · `releaseCloudMember` · `getReportDelivery` /
+`submitReportToTeacher` (report-actions.ts). Pending: `logCheckin` · `submitPeerEval`.
 
 ## Success criteria (verifiable)
 
@@ -402,9 +462,9 @@ Built: `createTeacherTemplate` / `deleteTeacherTemplate` (template-actions.ts) �
 
 ## Engineering roadmap
 
-> Status 2026-07-06: **1–4 done + the templates vertical** — teacher accounts, template
-> editor, class code, group spawn and roles/RLS shipped and probed. **Next:** the closing
-> vertical (peer-eval → close → report handed to the teacher).
+> Status 2026-10-06: **1–7 done except peer-eval** — groups now hand their report to the
+> teacher. Pilot hardening shipped in code; the hosted DB still needs the two new
+> migrations + Auth settings (docs/PUESTA-EN-MARCHA.md). **Next:** peer evaluation.
 
 1. **Bootstrap** — ✅ Next 16 app, deps, `.env.local`, dev runs.
 2. **Auth** — ✅ student **anonymous auth + join-by-code** live (`/p/[code]` claim flow).
@@ -415,9 +475,10 @@ Built: `createTeacherTemplate` / `deleteTeacherTemplate` (template-actions.ts) �
 4. **UI shell** — ✅ role-based: student dashboard tabs, teacher home + template editor.
 5. **Verticals** — ✅ templates (create/edit/share/spawn) · ✅ projects/groups ·
    ✅ tasks (check-ins pending) · ⬜ peer-eval.
-6. **Dashboard** — ✅ student · ✅ teacher (templates + groups roster; reports pending).
-7. **Report** — ✅ student-side Informe tab; ⬜ close flow + teacher delivery.
-8. **Pilot hardening** — GDPR consent + retention (after ethics green light).
+6. **Dashboard** — ✅ student · ✅ teacher (templates + groups roster + delivered reports).
+7. **Report** — ✅ student-side Informe tab · ✅ delivery to the teacher (snapshot RPC).
+8. **Pilot hardening** — ✅ mobile/touch, perf, resilience, keep-alive, device switch ·
+   ⬜ GDPR consent + retention (after ethics green light).
 
 ## Pilot prerequisites (non-engineering, run in parallel)
 
