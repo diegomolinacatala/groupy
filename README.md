@@ -10,7 +10,7 @@ nunca ve el trabajo en curso, solo el informe entregado.
 - **Puesta en marcha (Supabase + Vercel):** [docs/PUESTA-EN-MARCHA.md](docs/PUESTA-EN-MARCHA.md)
 - **Contrato del proyecto y decisiones:** [CLAUDE.md](CLAUDE.md)
 
-Producción: <https://groupy-eight.vercel.app>
+Producción: <https://groupy-sigma.vercel.app>
 
 ## Rutas
 

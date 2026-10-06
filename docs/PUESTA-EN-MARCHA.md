@@ -66,8 +66,8 @@ tablas ni datos existentes: solo añaden funciones.
      Habría que configurar un SMTP propio (Authentication → Emails → SMTP
      Settings; p. ej. Resend, Brevo…).
 3. **URL Configuration:**
-   - **Site URL:** `https://groupy-eight.vercel.app` (o el dominio definitivo).
-   - **Redirect URLs:** añade `https://groupy-eight.vercel.app/auth/confirm`.
+   - **Site URL:** `https://groupy-sigma.vercel.app` (o el dominio definitivo).
+   - **Redirect URLs:** añade `https://groupy-sigma.vercel.app/auth/confirm`.
 
 ## 4. Vercel
 
@@ -78,7 +78,7 @@ tablas ni datos existentes: solo añaden funciones.
      envía al cron y nadie más puede llamar a `/api/keepalive`.
 2. Despliega `main` (si el repo está conectado, basta con hacer push).
 3. Comprueba en **Settings → Cron Jobs** que aparece `/api/keepalive` (diario).
-4. Abre `https://groupy-eight.vercel.app/api/keepalive` → debe responder
+4. Abre `https://groupy-sigma.vercel.app/api/keepalive` → debe responder
    `{"ok":true,…}` (o 401 si pusiste `CRON_SECRET`, lo cual también es correcto).
 
 ## 5. Prueba de humo completa (con datos ficticios, ~10 min)

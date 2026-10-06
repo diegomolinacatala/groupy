@@ -10,7 +10,7 @@ tareas y va marcando su avance durante las semanas. Al terminar, el grupo te
 > quién está en cada grupo y, cuando el grupo lo entrega, su informe final.
 > Así los alumnos trabajan con tranquilidad y el informe es una foto honesta.
 
-Dirección de la web: **https://groupy-eight.vercel.app** (funciona en
+Dirección de la web: **https://groupy-sigma.vercel.app** (funciona en
 ordenador, tablet y móvil; en el móvil puedes «Añadir a pantalla de inicio»).
 
 ---
